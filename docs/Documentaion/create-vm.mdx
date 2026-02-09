@@ -28,7 +28,9 @@ Follow the steps below to reach the instance creation page:
 1. Go to the **Project** tab.
 2. Open the **Compute** section.
 3. Click on **Instances**.
+![Login Page](./images/2.png)
 4. Click **Launch Instance**.
+![Login Page](./images/3.png)
 
 ---
 
@@ -47,7 +49,7 @@ Provide the basic configuration for the virtual machine:
 - **Count**  
   - Specify the number of instances to create.
   - Ensure you have sufficient quota before increasing the count.
-
+![Login Page](./images/4.png)
 ---
 
 ## Step 4: Select Source (Operating System)
@@ -72,7 +74,7 @@ Configure the operating system and storage options:
 
 - **Image**
   - Select the required **Operating System / Image** from the list.
-
+![Login Page](./images/5.png)
 ---
 
 ## Step 5: Choose Flavor (Compute Resources)
@@ -86,3 +88,51 @@ A **Flavor** defines the hardware resources allocated to the VM:
 - Overall performance capacity
 
 Select a flavor based on the application or workload requirements.
+![Login Page](./images/7.png)
+---
+
+## Step 6: Configure Security Groups
+
+### Security Group
+
+Switch to the **Security Groups** tab.
+
+Security groups are collections of network access rules that control the inbound and outbound traffic allowed to reach an instance.
+
+- By default, the **default** security group is selected.
+- To use a custom security group, click the **arrow-up** icon to add it to the instance.
+
+> **Note:** To create a new security group, refer to **How to Create Security Groups?**
+![Login Page](./images/8.png)
+---
+
+## Step 7: Select a Key Pair
+
+### Key Pair
+
+Switch to the **Key Pair** tab.
+
+A **key pair** consists of:
+- A **public key**, which is used to encrypt data
+- A **private key**, which is used to decrypt data
+
+Key pairs are associated with individual users and are not shared at the project level.
+
+Select the required key pair by clicking the **arrow-up** icon.
+![Login Page](./images/9.png)
+---
+
+## Step 8: Launch the Instance
+
+To complete the VM creation process, click **Launch Instance**.
+
+The virtual machine will be created and made available for use. Once launched, it can be accessed and managed through the dashboard.
+![Login Page](./images/10.png)
+
+To locate the created VM:
+1. Go to the **Project** tab.
+2. Open the **Compute** section.
+3. Click on **Instances**.
+![Login Page](./images/11.png)
+
+The newly created VM will be listed under the Instances page.
