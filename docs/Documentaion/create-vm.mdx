@@ -7,7 +7,7 @@ A **Virtual Machine (VM)**, also known as an **Instance**, is a virtual computer
 - **Subnet**: A logical division of an IP network range used for network segmentation and efficient IP address management.
 - **ILL (Internet Leased Line)**: A dedicated, high-speed connection that provides connectivity to external networks or the Internet.
 
->  To create a subnet, refer to **How to Create Subnet?**
+<Note>To create a subnet, refer to **How to Create Subnet?**</Note>
 
 ---
 
@@ -17,7 +17,11 @@ Open the following URL in your browser and log in using your credentials:
 
 [Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
 
-![Login Page](./images/creating-vm/1.png)
+<img
+  src="./images/creating-vm/1.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -29,11 +33,19 @@ Follow the steps below to reach the instance creation page:
 2. Open the **Compute** section.
 3. Click on **Instances**.
 
-![Login Page](./images/creating-vm/2.png)
+<img
+  src="./images/creating-vm/2.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 4. Click **Launch Instance**.
 
-![Login Page](./images/creating-vm/3.png)
+<img
+  src="./images/creating-vm/3.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -53,7 +65,13 @@ Provide the basic configuration for the virtual machine:
   - Specify the number of instances to create.
   - Ensure you have sufficient quota before increasing the count.
 
-![Login Page](./images/creating-vm/4.png)
+<Tip>Check your project quota limits before creating multiple instances to avoid deployment failures.</Tip>
+
+<img
+  src="./images/creating-vm/4.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -77,10 +95,16 @@ Configure the operating system and storage options:
   - **Yes** → Deletes the volume when the VM is deleted.
   - **No** → Retains the volume after VM deletion.
 
+<Warning>Select **No** if you want to preserve data and reuse the volume after instance deletion.</Warning>
+
 - **Image**
   - Select the required **Operating System / Image** from the list.
 
-![Login Page](./images/creating-vm/5.png)
+<img
+  src="./images/creating-vm/5.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -96,7 +120,11 @@ A **Flavor** defines the hardware resources allocated to the VM:
 
 Select a flavor based on the application or workload requirements.
 
-![Login Page](./images/creating-vm/6.png)
+<img
+  src="./images/creating-vm/6.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -109,9 +137,15 @@ Switch to the **Networks** tab.
 Select both **ILL** and **Subnet**.  
 Choosing both options helps reduce IP-related costs that are typically associated with creating and managing a router.
 
+<Tip>Selecting both ILL and Subnet can optimize your networking costs.</Tip>
+
 Ensure the required networks are selected before proceeding to the next step.
 
-![Login Page](./images/creating-vm/7.png)
+<img
+  src="./images/creating-vm/7.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -126,9 +160,13 @@ Security groups are collections of network access rules that control the inbound
 - By default, the **default** security group is selected.
 - To use a custom security group, click the **arrow-up** icon to add it to the instance.
 
-> **Note:** To create a new security group, refer to **How to Create Security Groups?**
+<Note>To create a new security group, refer to **How to Create Security Groups?**</Note>
 
-![Login Page](./images/creating-vm/8.png)
+<img
+  src="./images/creating-vm/8.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -146,7 +184,13 @@ Key pairs are associated with individual users and are not shared at the project
 
 Select the required key pair by clicking the **arrow-up** icon.
 
-![Login Page](./images/creating-vm/9.png)
+<Warning>Never share your private key. Store it securely and limit access to authorized users only.</Warning>
+
+<img
+  src="./images/creating-vm/9.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 ---
 
@@ -156,13 +200,21 @@ To complete the VM creation process, click **Launch Instance**.
 
 The virtual machine will be created and made available for use. Once launched, it can be accessed and managed through the dashboard.
 
-![Login Page](./images/creating-vm/10.png)
+<img
+  src="./images/creating-vm/10.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 To locate the created VM:
 1. Go to the **Project** tab.
 2. Open the **Compute** section.
 3. Click on **Instances**.
 
-![Login Page](./images/creating-vm/11.png)
+<img
+  src="./images/creating-vm/11.png"
+  alt="Login Page"
+  style="border-radius: 0.5rem; width: 400px;"
+/>
 
 The newly created VM will be listed under the Instances page.
