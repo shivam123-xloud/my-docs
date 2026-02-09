@@ -17,7 +17,7 @@ Open the following URL in your browser and log in using your credentials:
 
 https://portal-del.xloud.tech/auth/login/?next=/
 
-![Login Page](./images/1.png)
+![Login Page](./images/creating-vm/1.png)
 
 ---
 
@@ -29,11 +29,11 @@ Follow the steps below to reach the instance creation page:
 2. Open the **Compute** section.
 3. Click on **Instances**.
 
-![Login Page](./images/2.png)
+![Login Page](./images/creating-vm/-2.png)
 
 4. Click **Launch Instance**.
 
-![Login Page](./images/3.png)
+![Login Page](./images/creating-vm/3.png)
 
 ---
 
@@ -53,7 +53,7 @@ Provide the basic configuration for the virtual machine:
   - Specify the number of instances to create.
   - Ensure you have sufficient quota before increasing the count.
 
-![Login Page](./images/4.png)
+![Login Page](./images/creating-vm/4.png)
 ---
 
 ## Step 4: Select Source (Operating System)
@@ -79,7 +79,7 @@ Configure the operating system and storage options:
 - **Image**
   - Select the required **Operating System / Image** from the list.
 
-![Login Page](./images/5.png)
+![Login Page](./images/creating-vm/5.png)
 
 ---
 
@@ -95,11 +95,26 @@ A **Flavor** defines the hardware resources allocated to the VM:
 
 Select a flavor based on the application or workload requirements.
 
-![Login Page](./images/7.png)
+![Login Page](./images/creating-vm/6.png)
 
 ---
 
-## Step 6: Configure Security Groups
+## Step 6: Configure Networks
+
+### Network Tab
+
+Switch to the **Networks** tab.
+
+Select both **ILL** and **Subnet**.  
+Choosing both options helps reduce IP-related costs that are typically associated with creating and managing a router.
+
+Ensure the required networks are selected before proceeding to the next step.
+
+![Login Page](./images/creating-vm/7.png)
+
+---
+
+## Step 7: Configure Security Groups
 
 ### Security Group
 
@@ -112,11 +127,11 @@ Security groups are collections of network access rules that control the inbound
 
 > **Note:** To create a new security group, refer to **How to Create Security Groups?**
 
-![Login Page](./images/8.png)
+![Login Page](./images/creating-vm/8.png)
 
 ---
 
-## Step 7: Select a Key Pair
+## Step 8: Select a Key Pair
 
 ### Key Pair
 
@@ -130,23 +145,23 @@ Key pairs are associated with individual users and are not shared at the project
 
 Select the required key pair by clicking the **arrow-up** icon.
 
-![Login Page](./images/9.png)
+![Login Page](./images/creating-vm/9.png)
 
 ---
 
-## Step 8: Launch the Instance
+## Step 9: Launch the Instance
 
 To complete the VM creation process, click **Launch Instance**.
 
 The virtual machine will be created and made available for use. Once launched, it can be accessed and managed through the dashboard.
 
-![Login Page](./images/10.png)
+![Login Page](./images/creating-vm/10.png)
 
 To locate the created VM:
 1. Go to the **Project** tab.
 2. Open the **Compute** section.
 3. Click on **Instances**.
 
-![Login Page](./images/11.png)
+![Login Page](./images/creating-vm/11.png)
 
 The newly created VM will be listed under the Instances page.
