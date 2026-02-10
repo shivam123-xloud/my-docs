@@ -1,0 +1,29 @@
+{
+  "name": "My Docs",
+  "logo": "/logo/dark.svg",
+  "favicon": "/favicon.svg",
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "docs/index",
+        "docs/introduction",
+        "docs/quickstart"
+      ]
+    },
+    {
+      "group": "Essentials",
+      "pages": [
+        "docs/essentials/code",
+        "docs/essentials/markdown",
+        "docs/essentials/navigation"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "docs/api-reference/endpoint"
+      ]
+    }
+  ]
+}
