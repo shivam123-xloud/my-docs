@@ -2,6 +2,11 @@
   "name": "My Docs",
   "logo": "/logo/dark.svg",
   "favicon": "/favicon.svg",
+
+  "colors": {
+    "primary": "#16a34a"
+  },
+
   "navigation": [
     {
       "group": "Getting Started",
