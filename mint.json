@@ -2,11 +2,9 @@
   "name": "My Docs",
   "logo": "/logo/dark.svg",
   "favicon": "/favicon.svg",
-
   "colors": {
     "primary": "#16a34a"
   },
-
   "navigation": [
     {
       "group": "Getting Started",
@@ -14,6 +12,13 @@
         "docs/index",
         "docs/introduction",
         "docs/quickstart"
+      ]
+    },
+    {
+      "group": "Documentaion",
+      "pages": [
+        "docs/documentaion/create-vm",
+        "docs/documentaion/access-corrupted-vm-data"
       ]
     },
     {
@@ -30,11 +35,5 @@
         "docs/api-reference/endpoint"
       ]
     }
-  ]
-}
-{
-  "group": "Documentaion",
-  "pages": [
-    "docs/documentaion/create-vm"
   ]
 }
