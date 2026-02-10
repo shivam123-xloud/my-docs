@@ -1,181 +1,222 @@
----
-title: Create a Virtual Machine
-description: Step-by-step guide to creating and launching a virtual machine (Instance) in Xloud.
----
 
-# Create a Virtual Machine
+## What is a Virtual Machine?
 
-<Image
-  src="/images/creating-vm/1.png"
-  alt="Xloud portal login page"
-/>
+A **Virtual Machine (VM)** or **Instance** is a virtual computer that runs on cloud infrastructure.  
+It enables users to deploy and manage applications without owning physical hardware.
 
-A **Virtual Machine (VM)** — also known as an **Instance** — is a virtualized compute resource running on cloud infrastructure. It allows you to deploy and run applications without managing physical hardware.
+- **Subnet**: Logical division of an IP network for segmentation and efficient IP management  
+- **ILL (Internet Leased Line)**: Dedicated high-speed connectivity to external networks
 
 ---
 
-## Before You Begin
-
-<Card title="Key Concepts" icon="cloud">
-  <ul>
-    <li>
-      <strong>Subnet</strong>
-      <br />
-      A logical division of an IP network used for segmentation and IP address management.
-    </li>
-    <li>
-      <strong>ILL (Internet Leased Line)</strong>
-      <br />
-      A dedicated, high-speed connection for external or internet connectivity.
-    </li>
-  </ul>
-</Card>
-
-<Callout type="note">
-  If you don’t have a subnet yet, refer to <strong>How to Create a Subnet</strong> before continuing.
-</Callout>
-
----
-
-## Create a Virtual Machine
+## VM Creation Workflow
 
 <Steps>
 
-<Step title="Log in to the Xloud Portal">
-  Open the Xloud portal and sign in using your credentials.
+### Step 1: Login to Xloud Portal
 
-  <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">
-    Login to Xloud Portal
-  </a>
+Access the Xloud portal to begin VM creation:  
 
-  <Image
-    src="/images/creating-vm/1.png"
-    alt="Xloud portal login screen"
-  />
-</Step>
+[Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
 
-<Step title="Navigate to Instances">
-  Follow the navigation path:
-  <ul>
-    <li><strong>Project</strong></li>
-    <li><strong>Compute</strong></li>
-    <li><strong>Instances</strong></li>
-    <li>Click <strong>Launch Instance</strong></li>
-  </ul>
+<Image
+  src="/docs/Documentation/images/creating-vm/1.png"
+  alt="Xloud Login Page"
+  width={500}
+  height={300}
+/>
 
-  <Image
-    src="/images/creating-vm/2.png"
-    alt="Navigate to instances page"
-  />
+---
 
-  <Image
-    src="/images/creating-vm/3.png"
-    alt="Launch instance button"
-  />
+### Step 2: Navigate to Instances
 
-  <Callout type="tip">
-    All virtual machines are managed from the <strong>Instances</strong> page.
-  </Callout>
-</Step>
+- Go to **Project**
+- Open **Compute**
+- Click **Instances**
 
-<Step title="Configure Instance Details">
-  Provide basic information for your VM:
-  <ul>
-    <li><strong>Instance Name</strong> — Choose a meaningful name</li>
-    <li><strong>Description</strong> — Optional</li>
-    <li><strong>Count</strong> — Number of instances to create</li>
-  </ul>
 
-  <Image
-    src="/images/creating-vm/4.png"
-    alt="Instance details configuration"
-  />
+<Image
+  src="/docs/Documentation/images/creating-vm/2.png"
+  alt="Instances Page"
+  width={900}
+  height={500}
+/>
 
-  <Callout type="warning">
-    Ensure your project has sufficient quota before creating multiple instances.
-  </Callout>
-</Step>
 
-<Step title="Select the Operating System Source">
-  Configure the OS disk settings and select an image.
+- Click **Launch Instances**
 
-  <Image
-    src="/images/creating-vm/5.png"
-    alt="Select operating system image"
-  />
 
-  <Callout type="warning">
-    Select <strong>No</strong> if you want to preserve data after deleting the instance.
-  </Callout>
-</Step>
+<Image
+  src="/docs/Documentation/images/creating-vm/3.png"
+  alt="Launch Instance Button"
+  width={900}
+  height={500}
+/>
 
-<Step title="Choose a Flavor">
-  Select compute resources such as CPU and RAM.
 
-  <Image
-    src="/images/creating-vm/6.png"
-    alt="Choose instance flavor"
-  />
-</Step>
 
-<Step title="Configure Networking">
-  Attach the required networks:
-  <ul>
-    <li><strong>ILL</strong></li>
-    <li><strong>Subnet</strong></li>
-  </ul>
+---
 
-  <Image
-    src="/images/creating-vm/7.png"
-    alt="Configure instance networking"
-  />
+### Step 3: Configure Instance Details
 
-  <Callout type="tip">
-    Selecting both <strong>ILL</strong> and <strong>Subnet</strong> helps optimize networking and reduce IP-related costs.
-  </Callout>
-</Step>
+Under the **Details** tab:
 
-<Step title="Configure Security Groups">
-  Manage firewall rules for your instance.
+- **Instance Name**: Enter the VM name
+- **Description**: Optional
+- **Count**: Number of instances to create (ensure sufficient quota)
 
-  <Image
-    src="/images/creating-vm/8.png"
-    alt="Security group selection"
-  />
+<Image
+  src="/docs/Documentation/images/creating-vm/4.png"
+  alt="Instance Details Configuration"
+  width={500}
+  height={300}
+/>
 
-  <Callout type="note">
-    Refer to <strong>How to Create Security Groups</strong> for custom firewall rules.
-  </Callout>
-</Step>
+---
 
-<Step title="Select a Key Pair">
-  Choose a key pair for secure access.
+### Step 4: Select Source (OS & Volume)
 
-  <Image
-    src="/images/creating-vm/9.png"
-    alt="Select key pair"
-  />
+Switch to the **Source** tab:
 
-  <Callout type="danger">
-    Never share your private key. Store it securely — it cannot be recovered if lost.
-  </Callout>
-</Step>
+- **Create New Volume** → Select **YES**
+- **Volume Size (GiB)** → Enables OS disk expansion
+- **Delete Volume on Instance Delete**
+  - YES → Deletes volume with VM
+  - NO → Retains volume
+- Select the **Operating System Image**
 
-<Step title="Launch the Instance">
-  Click <strong>Launch Instance</strong> to create the VM.
+<Image
+  src="/docs/Documentation/images/creating-vm/5.png"
+  alt="Source and OS Selection"
+  width={900}
+  height={500}
+/>
 
-  <Image
-    src="/images/creating-vm/10.png"
-    alt="Launch virtual machine"
-  />
 
-  After launch, view the VM at:
-  <br />
-  <strong>Project → Compute → Instances</strong>
+<Callout type="info">
+Always select <strong>Create New Volume = YES</strong> to allow future OS disk expansion.
+</Callout>
 
-  <Image
-    src="/images/creating-vm/11.png"
-    alt="Instances list page"
+
+---
+
+### Step 5: Choose Flavor
+
+Switch to the **Flavor** tab:
+
+- Select a **Flavor** (CPU and RAM configuration)
+
+<Image
+  src="/docs/Documentation/images/creating-vm/6.png"
+  alt="Flavor Selection"
+  width={900}
+  height={500}
+/>
+
+
+---
+
+### Step 6: Configure Network
+
+Switch to the **Networks** tab:
+
+- Select both:
+  - **ILL**
+  - **Subnet**
+
+<Image
+  src="/docs/Documentation/images/creating-vm/7.png"
+  alt="Network Selection"
+  width={900}
+  height={500}
+/>
+
+<Callout type="success">
+Selecting both ILL and Subnet helps avoid router creation and saves IP cost.
+</Callout>
+
+
+---
+
+### Step 7: Configure Security Group
+
+Switch to **Security Groups** tab:
+
+- Default security group is selected automatically
+- Use the arrow icon to select a custom security group
+
+<Image
+  src="/docs/Documentation/images/creating-vm/8.png"
+  alt="Security Group Selection"
+  width={900}
+  height={500}
+/>
+
+<Callout type="warning">
+To create a new security group, refer to the <strong>"Security Group Creation"</strong> guide.
+</Callout>
+
+
+---
+
+
+### Step 8: Select Key Pair
+
+Switch to **Key Pair** tab:
+
+- Select your key pair using the arrow
+
+<Image
+  src="/docs/Documentation/images/creating-vm/9.png"
+  alt="Key Pair Selection"
+  width={900}
+  height={500}
+/>
+
+
+---
+
+
+### Step 9: Launch the Instance
+
+Click **Launch Instance** to create the VM.
+
+<Image
+  src="/docs/Documentation/images/creating-vm/10.png"
+  alt="Launch Instance"
+  width={900}
+  height={500}
+/>
+
+
+---
+
+
+### Step 10: Verify VM Creation
+
+Navigate to:
+
+**Project → Compute → Instances**
+
+<Image
+  src="/docs/Documentation/images/creating-vm/11.png"
+  alt="VM Instance List"
+  width={900}
+  height={500}
+/>
+
+</Steps>
+
+
+---
+
+
+##  VM Successfully Created
+
+Your Virtual Machine is now live and ready to be accessed and managed through the dashboard.
+
+---
+
   />
 </Step>
 
