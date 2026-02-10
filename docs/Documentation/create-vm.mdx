@@ -14,13 +14,16 @@ It enables users to deploy and manage applications without owning physical hardw
 
 ### Step 1: Login to Xloud Portal
 
-Access the Xloud portal to begin VM creation:  
+Access the Xloud portal using the link below and log in with your credentials:
 
 [Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
 
-
-![Xloud portal login page](./images/creating-vm/1.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/1.png"
+  alt="Xloud Login Page"
+  width={900}
+  height={500}
+/>
 
 ---
 
@@ -29,16 +32,21 @@ Access the Xloud portal to begin VM creation:
 - Go to **Project**
 - Open **Compute**
 - Click **Instances**
-
-
-![Navigate to instances](./images/creating-vm/2.png)
-
-
 - Click **Launch Instances**
 
+<Image
+  src="/docs/Documentation/images/creating-vm/2.png"
+  alt="Instances Page"
+  width={900}
+  height={500}
+/>
 
-![Launch instance](./images/creating-vm/3.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/3.png"
+  alt="Launch Instance Button"
+  width={900}
+  height={500}
+/>
 
 ---
 
@@ -50,7 +58,12 @@ Under the **Details** tab:
 - **Description**: Optional
 - **Count**: Number of instances to create (ensure sufficient quota)
 
-![Instance details](./images/creating-vm/4.png)
+<Image
+  src="/docs/Documentation/images/creating-vm/4.png"
+  alt="Instance Details Configuration"
+  width={900}
+  height={500}
+/>
 
 ---
 
@@ -65,14 +78,16 @@ Switch to the **Source** tab:
   - NO → Retains volume
 - Select the **Operating System Image**
 
-
-![Select OS image](./images/creating-vm/5.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/5.png"
+  alt="Source and OS Selection"
+  width={900}
+  height={500}
+/>
 
 <Callout type="info">
 Always select <strong>Create New Volume = YES</strong> to allow future OS disk expansion.
 </Callout>
-
 
 ---
 
@@ -82,9 +97,12 @@ Switch to the **Flavor** tab:
 
 - Select a **Flavor** (CPU and RAM configuration)
 
-
-![Choose flavor](./images/creating-vm/6.png)>
-
+<Image
+  src="/docs/Documentation/images/creating-vm/6.png"
+  alt="Flavor Selection"
+  width={900}
+  height={500}
+/>
 
 ---
 
@@ -96,14 +114,16 @@ Switch to the **Networks** tab:
   - **ILL**
   - **Subnet**
 
-
-![Configure networking](./images/creating-vm/7.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/7.png"
+  alt="Network Selection"
+  width={900}
+  height={500}
+/>
 
 <Callout type="success">
 Selecting both ILL and Subnet helps avoid router creation and saves IP cost.
 </Callout>
-
 
 ---
 
@@ -114,17 +134,18 @@ Switch to **Security Groups** tab:
 - Default security group is selected automatically
 - Use the arrow icon to select a custom security group
 
-
-![Security groups](./images/creating-vm/8.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/8.png"
+  alt="Security Group Selection"
+  width={900}
+  height={500}
+/>
 
 <Callout type="warning">
 To create a new security group, refer to the <strong>"Security Group Creation"</strong> guide.
 </Callout>
 
-
 ---
-
 
 ### Step 8: Select Key Pair
 
@@ -132,23 +153,27 @@ Switch to **Key Pair** tab:
 
 - Select your key pair using the arrow
 
-
-![Select key pair](./images/creating-vm/9.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/9.png"
+  alt="Key Pair Selection"
+  width={900}
+  height={500}
+/>
 
 ---
-
 
 ### Step 9: Launch the Instance
 
 Click **Launch Instance** to create the VM.
 
-
-![Launch instance](./images/creating-vm/10.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/10.png"
+  alt="Launch Instance"
+  width={900}
+  height={500}
+/>
 
 ---
-
 
 ### Step 10: Verify VM Creation
 
@@ -156,23 +181,19 @@ Navigate to:
 
 **Project → Compute → Instances**
 
-
-![Instances list](./images/creating-vm/11.png)
-
+<Image
+  src="/docs/Documentation/images/creating-vm/11.png"
+  alt="VM Instance List"
+  width={900}
+  height={500}
+/>
 
 </Steps>
 
-
 ---
 
-
-##  VM Successfully Created
+## VM Successfully Created
 
 Your Virtual Machine is now live and ready to be accessed and managed through the dashboard.
 
 ---
-
-  />
-</Step>
-
-</Steps>
