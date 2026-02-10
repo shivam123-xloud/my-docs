@@ -38,10 +38,10 @@
             ]
           },
           {
-            "group": "Documentaion",
+            "group": "Documentation",
             "pages": [
-              "docs/documentaion/create-vm",
-              "docs/documentaion/access-corrupted-vm-data"
+              "Documentation/create-vm",
+              "Documentation/access-corrupted-vm-data"
             ]
           },
           {
