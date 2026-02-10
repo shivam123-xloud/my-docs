@@ -38,6 +38,13 @@
             ]
           },
           {
+            "group": "Documentaion",
+            "pages": [
+              "docs/documentaion/create-vm",
+              "docs/documentaion/access-corrupted-vm-data"
+            ]
+          },
+          {
             "group": "AI tools",
             "pages": [
               "ai-tools/cursor",
