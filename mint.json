@@ -32,3 +32,9 @@
     }
   ]
 }
+{
+  "group": "Documentaion",
+  "pages": [
+    "docs/documentaion/create-vm"
+  ]
+}
