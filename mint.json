@@ -9,30 +9,30 @@
     {
       "group": "Getting Started",
       "pages": [
-        "index",
-        "introduction",
-        "quickstart"
+        "docs/index",
+        "docs/introduction",
+        "docs/quickstart"
       ]
     },
     {
       "group": "Documentaion",
       "pages": [
-        "Documentaion/create-vm",
-        "Documentaion/access-corrupted-vm-data"
+        "docs/documentaion/create-vm",
+        "docs/documentaion/access-corrupted-vm-data"
       ]
     },
     {
       "group": "Essentials",
       "pages": [
-        "essentials/code",
-        "essentials/markdown",
-        "essentials/navigation"
+        "docs/essentials/code",
+        "docs/essentials/markdown",
+        "docs/essentials/navigation"
       ]
     },
     {
       "group": "API Reference",
       "pages": [
-        "api-reference/endpoint"
+        "docs/api-reference/endpoint"
       ]
     }
   ]
