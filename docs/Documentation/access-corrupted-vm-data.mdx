@@ -1,112 +1,151 @@
-# How to Access Corrupted VM Data
+# Access Corrupted VM Data
 
-If a virtual machine (VM) becomes corrupted, its data can still be accessed by creating a snapshot of the VM and then generating a volume from that snapshot. The created volume can be attached to another working VM, allowing you to retrieve files and important information from the corrupted VM.
+If a virtual machine (VM) becomes corrupted, its data can still be recovered.  
+You can:
+
+1. Create a **snapshot** of the corrupted VM  
+2. Create a **volume** from that snapshot  
+3. Attach the volume to a working VM  
+4. Mount the volume and retrieve your data  
 
 ---
 
 ## Step 1: Log in to the Portal
 
-Log in to the cloud portal using the following URL:
+Access the Xloud portal using the link below:
 
-[Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">
+  Login to Xloud Portal
+</Button>
 
-<img
-  src="./images/creating-vm/1.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
-/> 
+<Image
+  src="/images/creating-vm/1.png"
+  alt="Xloud Login Page"
+  width="400"
+/>
 
 ---
 
 ## Step 2: Navigate to Instances
 
-1. Go to the **Project** tab.
-2. Open the **Compute** section.
-3. Click on **Instances**.
+Follow the navigation path:
 
-<Note>Make sure your account has the Project → Compute permission to view instances.</Note>
+<Project → Compute → Instances>
 
-<img
-  src="./images/creating-vm/2.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Compute</b> section</Step>
+  <Step>Click on <b>Instances</b></Step>
+</Steps>
+
+<Note>
+Make sure your account has <b>Project → Compute</b> permission to view instances.
+</Note>
+
+<Image
+  src="/images/creating-vm/2.png"
+  alt="Instances Page"
+  width="400"
 />
 
 ---
 
 ## Step 3: Create a Snapshot of the Corrupted VM
 
-<img
-  src="./images/access-corrupted-vm/12.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Steps>
+  <Step>Locate the corrupted VM in the Instances list</Step>
+  <Step>Click <b>Create Snapshot</b></Step>
+  <Step>Enter a Snapshot Name</Step>
+  <Step>Click <b>Create Snapshot</b> to begin</Step>
+</Steps>
+
+<Image
+  src="/images/access-corrupted-vm/12.png"
+  alt="Create Snapshot Option"
+  width="400"
 />
 
-1. Locate the corrupted VM from the Instances list.
-2. Click on the **Create Snapshot** button associated with the VM.
-3. Enter a **Snapshot Name**.
-4. Click **Create Snapshot** to start the snapshot creation process.
-
-This snapshot captures the current state of the corrupted VM.
-
-<Warning>Ensure the VM is quiesced or shut down before taking snapshots for consistent filesystem state.</Warning>
-
-<img
-  src="./images/access-corrupted-vm/13.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Image
+  src="/images/access-corrupted-vm/13.png"
+  alt="Snapshot Creation"
+  width="400"
 />
+
+<Warning>
+Ensure the VM is shut down or properly quiesced before taking a snapshot to avoid filesystem corruption.
+</Warning>
 
 ---
 
 ## Step 4: Create a Volume from the Snapshot
 
+Navigate to:
 
+<Project → Compute → Images>
 
-1. Go to **Images** under the **Compute** section of the Project tab.
-
-<img
-  src="./images/access-corrupted-vm/14.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Image
+  src="/images/access-corrupted-vm/14.png"
+  alt="Images Section"
+  width="400"
 />
 
-2. Locate the snapshot created for the corrupted VM.
+<Steps>
+  <Step>Locate the snapshot created earlier</Step>
+  <Step>Click the arrow icon to open options</Step>
+  <Step>Select <b>Create Volume</b></Step>
+  <Step>Enter Volume Name</Step>
+  <Step>Add Description (Optional)</Step>
+  <Step>Click <b>Create Volume</b></Step>
+</Steps>
 
-<img
-  src="./images/access-corrupted-vm/15.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Image
+  src="/images/access-corrupted-vm/15.png"
+  alt="Snapshot List"
+  width="400"
 />
 
-3. Click the **arrow icon** next to the snapshot to view additional options.
-
-<img
-  src="./images/access-corrupted-vm/16.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Image
+  src="/images/access-corrupted-vm/16.png"
+  alt="Create Volume Option"
+  width="400"
 />
 
-4. Select **Create Volume**.
-5. Provide the following details:
-   - **Volume Name:** Assign a name to the volume.
-   - **Description:** (Optional) Add a description, such as *my volume description*.
-6. Click **Create Volume** to finalize the process.
-
-<img
-  src="./images/access-corrupted-vm/17.png"
-  alt="Login Page"
-  style="border-radius: 0.5rem; width: 400px;"
+<Image
+  src="/images/access-corrupted-vm/17.png"
+  alt="Volume Creation Form"
+  width="400"
 />
 
-The volume now contains a copy of the data from the corrupted VM.
+<Info>
+The newly created volume now contains a copy of the corrupted VM's disk data.
+</Info>
 
 ---
 
-## Step 5: Attach the Volume to Another VM
+## Step 5: Attach the Volume to a Working VM
 
-To access the data, attach the newly created volume to a working VM.
+To access the data:
 
-<Tip>Mount the attached volume read-only on the rescue VM to avoid altering original data.</Tip>
+<Steps>
+  <Step>Go to <b>Project → Compute → Instances</b></Step>
+  <Step>Select a healthy (working) VM</Step>
+  <Step>Attach the newly created volume</Step>
+  <Step>Log in to the VM</Step>
+  <Step>Mount the attached volume</Step>
+  <Step>Copy the required files</Step>
+</Steps>
 
-For detailed instructions, refer to **How to Attach Volume to VM and Move Volume to Another VM?**
+<Tip>
+Mount the volume in read-only mode to prevent accidental modification of original data.
+</Tip>
+
+---
+
+## Related Guide
+
+<Card
+  title="How to Attach Volume to VM and Move Volume to Another VM"
+  href="/docs/attach-volume"
+>
+  Step-by-step guide for attaching and migrating volumes between virtual machines.
+</Card>
