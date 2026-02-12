@@ -1,12 +1,12 @@
 # Access Corrupted VM Data
 
-If a virtual machine (VM) becomes corrupted, its data can still be recovered.  
+If a **virtual machine (VM)** becomes corrupted, its data can still be recovered.  
 You can:
 
 1. Create a **snapshot** of the corrupted VM  
 2. Create a **volume** from that snapshot  
-3. Attach the volume to a working VM  
-4. Mount the volume and retrieve your data  
+3. **Attach** the volume to a working VM  
+4. **Mount** the volume and retrieve your data  
 
 ---
 
@@ -14,12 +14,12 @@ You can:
 
 Access the Xloud portal using the link below:
 
-<Button href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">
+[Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
   Login to Xloud Portal
 </Button>
 
 <Image
-  src="/images/creating-vm/1.png"
+  src="/docs/Documentation/images/creating-vm/1.png"
   alt="Xloud Login Page"
   width="400"
 />
@@ -43,7 +43,7 @@ Make sure your account has <b>Project → Compute</b> permission to view instanc
 </Note>
 
 <Image
-  src="/images/creating-vm/2.png"
+  src="/docs/Documentation/images/creating-vm/2.png"
   alt="Instances Page"
   width="400"
 />
@@ -60,13 +60,13 @@ Make sure your account has <b>Project → Compute</b> permission to view instanc
 </Steps>
 
 <Image
-  src="/images/access-corrupted-vm/12.png"
+  src="./images/access-corrupted-vm/12.png"
   alt="Create Snapshot Option"
   width="400"
 />
 
 <Image
-  src="/images/access-corrupted-vm/13.png"
+  src="./images/access-corrupted-vm/13.png"
   alt="Snapshot Creation"
   width="400"
 />
@@ -84,7 +84,7 @@ Navigate to:
 <Project → Compute → Images>
 
 <Image
-  src="/images/access-corrupted-vm/14.png"
+  src="./images/access-corrupted-vm/14.png"
   alt="Images Section"
   width="400"
 />
@@ -99,19 +99,19 @@ Navigate to:
 </Steps>
 
 <Image
-  src="/images/access-corrupted-vm/15.png"
+  src="./images/access-corrupted-vm/15.png"
   alt="Snapshot List"
   width="400"
 />
 
 <Image
-  src="/images/access-corrupted-vm/16.png"
+  src="./images/access-corrupted-vm/16.png"
   alt="Create Volume Option"
   width="400"
 />
 
 <Image
-  src="/images/access-corrupted-vm/17.png"
+  src="./images/access-corrupted-vm/17.png"
   alt="Volume Creation Form"
   width="400"
 />
@@ -141,11 +141,4 @@ Mount the volume in read-only mode to prevent accidental modification of origina
 
 ---
 
-## Related Guide
-
-<Card
-  title="How to Attach Volume to VM and Move Volume to Another VM"
-  href="/docs/attach-volume"
->
-  Step-by-step guide for attaching and migrating volumes between virtual machines.
-</Card>
+For detailed instructions, refer to **How to Attach Volume to VM and Move Volume to Another VM?**
