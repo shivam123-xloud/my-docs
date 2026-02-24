@@ -1,0 +1,181 @@
+---
+title: How to Create a Router
+description: Learn how to create routers and connect instances to the internet in XConnect Portal.
+---
+
+
+## What is a Router?
+
+A **Router** in networking is used for **interconnectivity of different networks** and for the **connection of instances to the internet**. It acts as a gateway that enables communication between your private network and external networks.
+
+**Key functions:**
+- **Internet connectivity** - Provides external network access for instances
+- **Network routing** - Routes traffic between different network segments
+- **Gateway services** - Acts as entry/exit point for network traffic
+- **Interface management** - Connects multiple network interfaces
+
+---
+
+## Creating a Router and Connecting Instances to Internet
+
+### Step 1: Log in to the Portal
+
+Log in to the XConnect portal using your credentials.
+
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
+  Login to XConnect Portal
+</Button>
+
+---
+
+### Step 2: Navigate to Routers
+
+Follow the navigation path:
+
+`Network → Routers`
+
+<Steps>
+  <Step>Select the <b>Network</b> tab</Step>
+  <Step>From the dropdown menu, select the <b>Router</b> option</Step>
+</Steps>
+
+<Image
+  src="../images/router-creation/navigate-routers.png"
+  alt="Navigate to Routers"
+  width="400"
+/>
+
+---
+
+### Step 3: Create Router
+
+<Steps>
+  <Step>Click on <b>Create Router</b></Step>
+</Steps>
+
+<Image
+  src="../images/router-creation/create-router-button.png"
+  alt="Create Router Button"
+  width="400"
+/>
+
+---
+
+### Step 4: Configure Router Details
+
+Enter the following configuration:
+
+<Steps>
+  <Step><b>Name</b>: Enter a descriptive name for the router</Step>
+  <Step><b>External Network</b>: Select the external network providing internet connectivity</Step>
+  <Step><b>Availability Zone Hints</b>: By default set to <b>Nova</b></Step>
+</Steps>
+
+<Info>
+The external network provides the internet connectivity for your instances through this router.
+</Info>
+
+<Image
+  src="../images/router-creation/router-configuration.png"
+  alt="Router Configuration Form"
+  width="400"
+/>
+
+---
+
+### Step 5: Finalize Router Creation
+
+<Steps>
+  <Step>Review all configuration details</Step>
+  <Step>Click <b>Create Router</b> to finalize</Step>
+</Steps>
+
+<Image
+  src="../images/router-creation/create-router-final.png"
+  alt="Finalize Router Creation"
+  width="400"
+/>
+
+---
+
+### Step 6: Set Gateway
+
+Now configure the gateway for internet access:
+
+<Steps>
+  <Step>Locate your newly created router in the router list</Step>
+  <Step>Click on <b>Set Gateway</b> on the right-hand side of the created router</Step>
+</Steps>
+
+<Image
+  src="../images/router-creation/router-list.png"
+  alt="Router List with Set Gateway Option"
+  width="400"
+/>
+
+---
+
+### Step 7: Configure Gateway
+
+<Steps>
+  <Step>Select the <b>External Network</b> for internet connectivity</Step>
+  <Step>Confirm the gateway configuration</Step>
+</Steps>
+
+<Tip>
+Once the gateway is set, your router is ready to provide internet connectivity to connected networks.
+</Tip>
+
+<Image
+  src="../images/router-creation/set-gateway.png"
+  alt="Set Gateway Configuration"
+  width="400"
+/>
+
+---
+
+## Router Successfully Created
+
+Your network router is now configured and ready to provide connectivity between your networks and the internet. Instances connected to router-enabled networks will have external access.
+
+<Info>
+To connect multiple network interfaces to this router, refer to the <b>How to Connect Multiple Interfaces</b> guide.
+</Info>
+
+---
+
+## Router Use Cases and Benefits
+
+### **Common Router Applications:**
+- **Internet access** - Provide external connectivity for private networks
+- **Multi-network connectivity** - Connect different subnets and VLANs
+- **Traffic routing** - Direct network traffic between different network segments
+- **Gateway services** - Act as entry point for external communications
+
+### **Router Configuration Best Practices:**
+- **Plan network topology** before creating multiple routers
+- **Use descriptive names** for easy identification and management
+- **Monitor interface utilization** to ensure optimal performance
+- **Implement security groups** to control traffic flow
+
+<Warning>
+Proper router configuration is essential for network security and performance. Misconfigured routers can lead to connectivity issues or security vulnerabilities.
+</Warning>
+
+---
+
+## Network Topology Considerations
+
+### **Single Router Setup:**
+- **Simple topology** - One router connecting internal network to internet
+- **Use case**: Small deployments, development environments
+- **Benefit**: Easy to manage and configure
+
+### **Multi-Router Setup:**
+- **Complex topology** - Multiple routers for different network segments
+- **Use case**: Large deployments, production environments with multiple tiers
+- **Benefit**: Better traffic isolation and redundancy
+
+<Tip>
+Start with a simple router configuration and expand as your network requirements grow.
+</Tip>

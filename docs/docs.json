@@ -45,6 +45,33 @@
             ]
           },
           {
+            "group": "VM Management",
+            "pages": [
+              "Documentation/VM Management/how to create vm",
+              "Documentation/VM Management/how to lock instance",
+              "Documentation/VM Management/access-corrupted-vm-data"
+            ]
+          },
+          {
+            "group": "Image Management",
+            "pages": [
+              "Documentation/Image Management/how to upload an image on Openstack"
+            ]
+          },
+          {
+            "group": "Storage Management",
+            "pages": [
+              "Documentation/Storage Management/How to create a volume"
+            ]
+          },
+          {
+            "group": "Network Management",
+            "pages": [
+              "Documentation/Network Management/router",
+              "Documentation/Network Management/how to connect multiple interfaces"
+            ]
+          },
+          {
             "group": "AI tools",
             "pages": [
               "ai-tools/cursor",

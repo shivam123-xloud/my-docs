@@ -1,0 +1,157 @@
+---
+title: How to Upload an Image on OpenStack
+description: Learn how to upload images to OpenStack using both CLI and XConnect Dashboard methods.
+---
+
+**-** There are two methods to upload images to OpenStack: using the **Command Line Interface (CLI)** or the **XConnect Dashboard**. Both methods allow you to upload custom images for VM creation.
+
+---
+
+## Method 1: Using the Command Line Interface (CLI)
+
+### Step 1: Log in to OpenStack CLI
+
+Firstly, log in to your OpenStack CLI using the RC file.
+
+<Info>
+To learn how to access the OpenStack CLI, refer to the CLI access documentation.
+</Info>
+
+### Step 2: Upload the Image
+
+Use the following command to upload the image to OpenStack:
+
+```bash
+openstack image create ImageName --file /path/to/image-file --disk-format raw --container-format bare --public --progress
+```
+
+<Image
+  src="../images/image-upload/cli-upload.png"
+  alt="CLI Image Upload"
+  width="400"
+/>
+
+### **Example:**
+
+```bash
+openstack image create MyCustomImage --file /home/user/ubuntu-20.04.iso --disk-format raw --container-format bare --public --progress
+```
+
+### **Parameters Explained:**
+
+<Steps>
+  <Step><b>ImageName</b>: The name you want to give to the uploaded image</Step>
+  <Step><b>--file /path/to/image-file</b>: The path to the image file that you want to upload</Step>
+  <Step><b>--disk-format raw</b>: The disk format of the image</Step>
+  <Step><b>--container-format bare</b>: The container format of the image (typically bare unless you have a specific container format)</Step>
+  <Step><b>--public</b>: Makes the image accessible to all users in the OpenStack project</Step>
+  <Step><b>--private</b>: Restricts access to only the user who uploads the image</Step>
+  <Step><b>--progress</b>: Shows the progress of the image upload</Step>
+</Steps>
+
+---
+
+## Method 2: Using the XConnect Dashboard
+
+### Step 1: Log in to XConnect
+
+Log in to your XConnect account.
+
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
+  Login to XConnect Portal
+</Button>
+
+### Step 2: Navigate to Images
+
+<Steps>
+  <Step>Navigate to <b>Compute → Images</b></Step>
+  <Step>Click on the <b>Create Image</b> button</Step>
+</Steps>
+
+<Image
+  src="../images/image-upload/dashboard-navigate.png"
+  alt="Navigate to Images Section"
+  width="400"
+/>
+
+### Step 3: Provide Image Details
+
+Fill in the necessary details:
+
+<Steps>
+  <Step><b>Name</b>: Enter a name for the image</Step>
+  <Step><b>Image File</b>: Select the file you want to upload</Step>
+  <Step><b>Format</b>: Choose the format of the image</Step>
+  <Step><b>Visibility</b>: Select the visibility option (Private, Protected, Public)</Step>
+</Steps>
+
+**Visibility Options:**
+- **Private**: Only you can access the image
+- **Protected**: Specific users/projects can access the image  
+- **Public**: All users in the OpenStack environment can access the image
+
+<Image
+  src="../images/image-upload/create-image-form.png"
+  alt="Create Image Form"
+  width="400"
+/>
+
+### Step 4: Upload the Image
+
+<Steps>
+  <Step>Click on the <b>Create Image</b> button to upload the image</Step>
+  <Step>Wait for the upload progress to complete</Step>
+  <Step>Verify the image appears in the Images list</Step>
+</Steps>
+
+<Image
+  src="../images/image-upload/upload-progress.png"
+  alt="Image Upload Progress"
+  width="400"
+/>
+
+---
+
+## Best Practices
+
+<Tip>
+**Choose the right format:** Use RAW format for best performance, or QCOW2 for space efficiency.
+</Tip>
+
+<Warning>
+**Check file size limits:** Large images may take considerable time to upload. Ensure stable network connection.
+</Warning>
+
+### **Recommended Image Formats:**
+- **RAW**: Fastest performance, larger file size
+- **QCOW2**: Space-efficient, slightly slower performance
+- **VHD**: Good for Windows images
+- **VMDK**: Compatible with VMware environments
+
+### **Visibility Guidelines:**
+- **Use Private** for testing or personal images
+- **Use Protected** for organization-specific images
+- **Use Public** for commonly used base images
+
+---
+
+## Verify Image Upload
+
+After uploading, verify your image:
+
+<Steps>
+  <Step>Go to <b>Compute → Images</b></Step>
+  <Step>Check the image status is <b>Active</b></Step>
+  <Step>Verify image size and format details</Step>
+  <Step>Test by creating a VM from the uploaded image</Step>
+</Steps>
+
+<Info>
+Images must be in "Active" status before they can be used to create virtual machines.
+</Info>
+
+---
+
+## Image Successfully Uploaded
+
+Your custom image is now available in OpenStack and ready to be used for creating virtual machines with your specific configuration and software requirements.

@@ -1,0 +1,142 @@
+---
+title: How to Lock Instance
+description: Learn how to lock a VM instance to prevent modifications and keep it in read-only state.
+---
+
+
+## What is Instance Locking?
+
+The **"Lock instance"** option allows you to lock an instance to prevent any further actions or modifications on that instance. When an instance is locked, it becomes **read-only**, meaning you cannot perform any operations that could potentially modify its state or configuration.
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the xconnect portal using your credentials.
+
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
+  Login to Xloud Portal
+</Button>
+
+---
+
+## Step 2: Navigate to Instances
+
+Follow the navigation path:
+
+`Project → Compute → Instances`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Compute</b> section</Step>
+  <Step>Click on <b>Instances</b></Step>
+</Steps>
+
+<Image
+  src="../images/creating-vm/2.png"
+  alt="Navigate to Instances"
+  width="400"
+/>
+
+---
+
+## Step 3: Lock the Instance
+
+<Steps>
+  <Step>Locate the instance you want to lock</Step>
+  <Step>Click on the <b>More Options</b> arrow for that instance</Step>
+  <Step>Select <b>Lock Instance</b> from the dropdown menu</Step>
+</Steps>
+
+<Info>
+The "More Options" arrow provides additional actions specific to that instance.
+</Info>
+
+<Image
+  src="../images/lock-instance/lock-options.png"
+  alt="Lock Instance Options"
+  width="400"
+/>
+
+---
+
+## Step 4: Verify Lock Status
+
+After locking the instance:
+
+<Steps>
+  <Step>Check the instance information panel</Step>
+  <Step>Look for the <b>lock icon</b> in the instance details</Step>
+</Steps>
+
+<Image
+  src="../images/lock-instance/locked-status.png"
+  alt="Locked Instance Status"
+  width="400"
+/>
+
+<Tip>
+A lock icon will be visible in the instance information, indicating the instance is successfully locked.
+</Tip>
+
+---
+
+## What Does Locking Restrict?
+
+Applying a lock to an instance restricts several operations:
+
+### **🚫 Restricted Operations:**
+- **Change instance state** (pause, suspend, reboot)
+- **Resize resources** (CPU, memory, storage)
+- **Perform live migrations**
+- **Attach or detach volumes**
+- **Modify security groups**
+- **Update instance configuration**
+
+### **✅ Allowed Operations:**
+- **Access logs and monitoring information**
+- **View instance details and status**  
+- **Review configuration settings**
+- **Monitor performance metrics**
+
+<Warning>
+The lock keeps the instance in a read-only state. No configuration or state changes can be made until the lock is removed.
+</Warning>
+
+---
+
+## When to Use Instance Locking
+
+**Lock instances when:**
+- **Production systems** require change control
+- **Critical workloads** need protection from accidental modifications
+- **Maintenance windows** are scheduled  
+- **Compliance requirements** demand immutable infrastructure
+- **Shared environments** need access restrictions
+
+**Common use cases:**
+- Database servers during backup operations
+- Web servers during traffic spikes
+- Development instances during testing phases
+- Critical applications with strict SLAs
+
+---
+
+## How to Unlock an Instance
+
+<Steps>
+  <Step>Navigate to the locked instance</Step>
+  <Step>Click on the <b>More Options</b> arrow</Step>
+  <Step>Select <b>Unlock Instance</b> from the dropdown</Step>
+  <Step>Verify the lock icon disappears from instance details</Step>
+</Steps>
+
+<Info>
+Only users with appropriate permissions can unlock instances. Contact your administrator if you cannot unlock an instance.
+</Info>
+
+---
+
+## Instance Successfully Locked
+
+Your instance is now protected in read-only mode, preventing any accidental modifications while maintaining full monitoring and access capabilities.

@@ -1,0 +1,295 @@
+---
+title: How to Create a VM
+description: Step-by-step guide to create a Virtual Machine in Xloud Portal.
+---
+
+
+## What is a Virtual Machine?
+
+A **Virtual Machine (VM)** or **Instance** is like a virtual computer that runs on the cloud. It allows users to deploy and run applications on virtualized infrastructure without needing physical hardware.
+
+- **Subnet**: A logical division of an IP network range, allowing for network segmentation and efficient IP address management
+- **ILL (Internet Leased Line)**: A dedicated, high-speed connection that provides connectivity between a system and external networks or the Internet
+
+<Info>
+To know how to create a subnet, please refer to the subnet creation guide.
+</Info>
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the xconnect portal using your credentials.
+
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
+  Login to Xloud Portal
+</Button>
+
+---
+
+## Step 2: Navigate to Instances
+
+Follow the navigation path:
+
+`Project → Compute → Instances`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Compute</b> section</Step>
+  <Step>Click on <b>Instances</b></Step>
+</Steps>
+
+<Image
+  src="../images/creating-vm/2.png"
+  alt="Navigate to Instances"
+  width="400"
+/>
+
+---
+
+## Step 3: Launch Instance
+
+<Steps>
+  <Step>Click on <b>Launch Instances</b></Step>
+</Steps>
+
+<Image
+  src="../images/creating-vm/3.png"
+  alt="Launch Instance Button"
+  width="400"
+/>
+
+---
+
+## Step 4: Configure Instance Details
+
+Under the **Details** tab, specify Instance/VM parameters:
+
+<Steps>
+  <Step><b>Instance Name</b>: Assign a name to the virtual machine</Step>
+  <Step><b>Description</b>: Optional description for the VM</Step>
+  <Step><b>Count</b>: If you want to create more than 1 instance, input desired number</Step>
+</Steps>
+
+<Warning>
+Make sure you have ample quota to create new instances.
+</Warning>
+
+<Image
+  src="../images/creating-vm/4.png"
+  alt="Instance Details Configuration"
+  width="400"
+/>
+
+---
+
+## Step 5: Configure Source
+
+Switch to the **Source** tab:
+
+<Steps>
+  <Step>Select <b>Boot Source</b>: Image</Step>
+  <Step>In <b>Create New Volume</b> option: Select <b>YES</b></Step>
+  <Step>Specify the <b>Volume Size (GiB)</b></Step>
+  <Step>Choose <b>Delete Volume on Instance Delete</b> option</Step>
+  <Step>Select the <b>Operating System/Image</b> from the list</Step>
+</Steps>
+
+<Info>
+Select <b>YES</b> for Create New Volume - this allows you to expand your OS drive dynamically after VM deployment. If you select <b>No</b>, the OS will load in fixed size storage.
+</Info>
+
+<Note>
+You can choose to delete the volume when you delete the VM, or keep the volume after VM deletion by selecting the appropriate option.
+</Note>
+
+<Image
+  src="../images/creating-vm/5.png"
+  alt="Source Configuration"
+  width="400"
+/>
+
+---
+
+## Step 6: Select Flavor
+
+Switch to the **Flavor** tab:
+
+<Steps>
+  <Step>Select the preset for the VM to launch</Step>
+</Steps>
+
+<Info>
+A flavor is a preset configuration that defines the compute & memory of a VM.
+</Info>
+
+<Image
+  src="../images/creating-vm/6.png"
+  alt="Flavor Selection"
+  width="400"
+/>
+
+---
+
+## Step 7: Configure Networks
+
+Switch to the **Networks** tab:
+
+<Steps>
+  <Step>Select both <b>ILL</b> & <b>Subnet</b></Step>
+</Steps>
+
+<Tip>
+Selecting both ILL & Subnet will help you save an IP cost which is associated with creating a router.
+</Tip>
+
+<Image
+  src="../images/creating-vm/7.png"
+  alt="Network Configuration"
+  width="400"
+/>
+
+---
+
+## Step 8: Configure Security Groups
+
+Switch to the **Security Groups** tab:
+
+<Steps>
+  <Step>Default security group is selected by default</Step>
+  <Step>Select your security group by clicking the arrow up sign</Step>
+</Steps>
+
+<Info>
+Security groups are collection of network access rules that are used to limit the types of traffic that have access to instances.
+</Info>
+
+<Note>
+To create a security group, please refer to the security group creation guide.
+</Note>
+
+<Image
+  src="../images/creating-vm/8.png"
+  alt="Security Group Selection"
+  width="400"
+/>
+
+---
+
+## Step 9: Select Key Pair
+
+Switch to the **Key Pair** tab:
+
+<Steps>
+  <Step>Select your key pair by clicking on the arrow up sign</Step>
+</Steps>
+
+
+### **Don't Have a Key Pair?**
+
+A **Key Pair** is a security feature used for secure authentication and access to virtual instances. A key pair works like a digital lock and key. The **lock (public key)** is used to secure a virtual instance, and the **key (private key)** is kept secret and used to unlock and access the instance securely.
+
+#### **Step 1: Log in to Portal**
+
+Log in to the xconnect portal.
+
+#### **Step 2: Create Key Pair**
+
+<Steps>
+  <Step>Under the <b>Project</b> tab, open the <b>Compute</b> tab</Step>
+  <Step>Click on <b>Key Pairs</b></Step>
+</Steps>
+
+Specify Key Pair parameters:
+
+<Steps>
+  <Step><b>Key Pair Name</b>: Assign a name to the Key Pair</Step>
+  <Step><b>Key Type</b>: Select key type (i.e., SSH Key or X509 certificate)</Step>
+  <Step>Click on <b>Create Key Pair</b></Step>
+</Steps>
+
+<Info>
+After creating a key pair, the private key is automatically generated and downloaded to your system.
+</Info>
+
+<Warning>
+It is important to securely store this automatically downloaded private key file as it grants access to the instances associated with the key pair.
+</Warning>
+
+After creating Key Pair, you can locate it under **Project** tab → **Compute** tab → **Key Pairs**.
+
+#### **Step 3: Connect to VM Using Key**
+
+<Steps>
+  <Step><b>Open terminal or command prompt</b> on your local machine</Step>
+  <Step><b>SSH into the VM</b> using the private key file:</Step>
+</Steps>
+
+```bash
+ssh -i /path/to/private_key.pem username@VM_IP_address
+```
+
+**Replace:**
+- `/path/to/private_key.pem` with the actual path to your private key file
+- `username` with the appropriate username for the VM  
+- `VM_IP_address` with the IP address or hostname of the VM
+
+#### **First Connection Warning**
+
+If this is the first time you connect to a VM, you will see a warning:
+
+```
+The authenticity of host '122.184.75.211 (122.184.75.211)' can't be established.
+ECDSA key fingerprint is SHA256:PoaSwqxRc8g6iOXtiH7ayGHpSN0MXwUfWHkGgpLELJ8.
+Are you sure you want to continue connecting (yes/no)?
+```
+
+<Steps>
+  <Step>Type <b>yes</b> in the terminal and press Enter</Step>
+</Steps>
+
+<Tip>
+Once you successfully establish the SSH connection, a new window will open, granting you access to the VM environment.
+</Tip>
+
+<Image
+  src="../images/creating-vm/9.png"
+  alt="Key Pair Selection"
+  width="400"
+/>
+
+---
+
+## Step 10: Launch the Instance
+
+<Steps>
+  <Step>Click on <b>Launch Instance</b> to launch the desired instance</Step>
+</Steps>
+
+<Image
+  src="../images/creating-vm/10.png"
+  alt="Launch Instance"
+  width="400"
+/>
+
+---
+
+## Step 11: Verify VM Creation
+
+To locate your created VM:
+
+`Project → Compute → Instances`
+
+Your VM will be available for use and can be accessed and managed through the dashboard.
+
+<Image
+  src="../images/creating-vm/11.png"
+  alt="VM Instance List"
+  width="400"
+/>
+
+---
+
+## VM Successfully Created
+
+Your Virtual Machine is now live and ready to be accessed and managed through the Xloud Portal dashboard.

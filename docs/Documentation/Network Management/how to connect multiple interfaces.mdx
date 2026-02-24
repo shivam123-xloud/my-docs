@@ -1,0 +1,184 @@
+---
+title: How to Connect Multiple Interfaces
+description: Learn how to connect multiple network interfaces using routers in XConnect Portal.
+---
+
+# How to Connect Multiple Interfaces
+
+## What are Router Interfaces?
+
+**Router Interfaces** allow you to connect multiple networks to a single router, enabling communication between different network segments. Each interface represents a connection point where different networks can be attached to the router.
+
+**Key benefits:**
+- **Multi-network connectivity** - Connect different subnets and VLANs through one router
+- **Traffic routing** - Enable communication between isolated network segments  
+- **Centralized management** - Manage multiple network connections from single router
+- **Flexible topology** - Create complex network architectures as needed
+
+---
+
+## Step 1: Log in to Portal
+
+Log in to the XConnect portal using your credentials.
+
+<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
+  Login to XConnect Portal
+</Button>
+
+---
+
+## Step 2: Navigate to Routers
+
+<Steps>
+  <Step>Select the <b>Network</b> tab</Step>
+  <Step>From the dropdown menu, select the <b>Router</b> option</Step>
+</Steps>
+
+<Image
+  src="../images/router-interfaces/navigate-routers.png"
+  alt="Navigate to Routers"
+  width="400"
+/>
+
+---
+
+## Step 3: Select Existing Router
+
+<Steps>
+  <Step>Select the name of desired <b>existing router</b> from the list</Step>
+</Steps>
+
+<Info>
+Ensure you have an existing router with gateway configured before adding interfaces.
+</Info>
+
+<Image
+  src="../images/router-interfaces/select-router.png"
+  alt="Select Existing Router"
+  width="400"
+/>
+
+---
+
+## Step 4: Access Interface Management
+
+<Steps>
+  <Step>Go to <b>Interfaces</b> section in the router details</Step>
+  <Step>Click on <b>Add Interface</b></Step>
+</Steps>
+
+<Image
+  src="../images/router-interfaces/router-interfaces.png"
+  alt="Router Interfaces Section"
+  width="400"
+/>
+
+---
+
+## Step 5: Add Network Interface
+
+<Steps>
+  <Step>Select one of the <b>interfaces/networks</b> you want to connect</Step>
+  <Step>Configure any additional interface settings if required</Step>
+  <Step>Confirm the interface addition</Step>
+</Steps>
+
+<Info>
+Each interface represents a network that will be connected through this router.
+</Info>
+
+<Image
+  src="../images/router-interfaces/add-interface.png"
+  alt="Add Interface Configuration"
+  width="400"
+/>
+
+---
+
+## Step 6: Repeat for Additional Interfaces
+
+<Steps>
+  <Step><b>Repeat Step 5</b> to add all the desired interfaces you want to connect</Step>
+  <Step>Verify all interfaces are properly connected</Step>
+  <Step>Check interface status shows as <b>Active</b></Step>
+</Steps>
+
+<Note>
+You can add multiple interfaces to enable communication between different networks through the same router.
+</Note>
+
+<Image
+  src="../images/router-interfaces/multiple-interfaces.png"
+  alt="Multiple Interfaces Connected"
+  width="400"
+/>
+
+---
+
+## Interface Management Best Practices
+
+### **Planning Network Connections:**
+- **Map network topology** before adding interfaces
+- **Identify required subnets** that need interconnectivity  
+- **Plan IP addressing** to avoid conflicts between networks
+- **Consider traffic flow** between connected networks
+
+### **Security Considerations:**
+- **Review network isolation** requirements before connecting
+- **Implement security groups** to control inter-network traffic
+- **Monitor traffic patterns** after connecting interfaces
+- **Document network connections** for troubleshooting
+
+<Warning>
+Connecting multiple interfaces can create security implications. Ensure proper firewall rules and security groups are in place.
+</Warning>
+
+---
+
+## Common Interface Connection Scenarios
+
+### **Multi-Tier Application:**
+- **Web tier subnet** → Router interface
+- **Application tier subnet** → Router interface  
+- **Database tier subnet** → Router interface
+- **Benefit**: Controlled communication between application layers
+
+### **Development Environment:**
+- **Development subnet** → Router interface
+- **Testing subnet** → Router interface
+- **Staging subnet** → Router interface
+- **Benefit**: Isolated environments with shared services access
+
+### **Hybrid Cloud Setup:**
+- **Private subnet** → Router interface
+- **Public subnet** → Router interface
+- **Management subnet** → Router interface
+- **Benefit**: Flexible connectivity for different workload types
+
+<Tip>
+Start with essential connections and add interfaces incrementally based on actual communication requirements.
+</Tip>
+
+---
+
+## Troubleshooting Interface Connections
+
+### **Common Issues:**
+- **Interface not appearing**: Check network availability and permissions
+- **Connectivity problems**: Verify routing tables and security groups
+- **IP conflicts**: Ensure subnet ranges don't overlap
+- **Performance issues**: Monitor bandwidth and routing efficiency
+
+### **Verification Steps:**
+<Steps>
+  <Step>Check interface status in router details</Step>
+  <Step>Verify network connectivity between subnets</Step>
+  <Step>Test traffic flow with ping/traceroute</Step>
+  <Step>Review router and network logs for errors</Step>
+</Steps>
+
+---
+
+## Multiple Interfaces Successfully Connected
+
+Your router now connects multiple networks, enabling communication between different network segments while maintaining centralized routing control and management.
