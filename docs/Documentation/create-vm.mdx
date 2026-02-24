@@ -1,9 +1,9 @@
 ## What is a Virtual Machine?
 
-A **Virtual Machine (VM)** or **Instance** is a virtual computer that runs on cloud infrastructure.  
+A **Virtual Machine (VM)** or **Instance** is a virtual computer that runs on cloud infrastructure.\
 It enables users to deploy and manage applications without owning physical hardware.
 
-- **Subnet**: Logical division of an IP network for segmentation and efficient IP management  
+- **Subnet**: Logical division of an IP network for segmentation and efficient IP management
 - **ILL (Internet Leased Line)**: Dedicated high-speed connectivity to external networks
 
 ---
@@ -18,12 +18,9 @@ Access the Xloud portal using the link below and log in with your credentials:
 
 [Login to Xloud Portal](https://portal-del.xloud.tech/auth/login/?next=/)
 
-<Image
-  src="/docs/Documentation/images/creating-vm/1.png"
-  alt="Xloud Login Page"
-  width={500}
-  height={300}
-/>
+<Frame>
+  ![1](/Documentation/images/creating-vm/1.png)
+</Frame>
 
 ---
 
@@ -33,21 +30,7 @@ Access the Xloud portal using the link below and log in with your credentials:
 - Open **Compute**
 - Click **Instances**
 
-<Image
-  src="/docs/Documentation/images/creating-vm/2.png"
-  alt="Instances Page"
-  width={900}
-  height={500}
-/>
-
 - Click **Launch Instances**
-
-<Image
-  src="/docs/Documentation/images/creating-vm/3.png"
-  alt="Launch Instance Button"
-  width={900}
-  height={500}
-/>
 
 ---
 
@@ -58,13 +41,6 @@ Under the **Details** tab:
 - **Instance Name**: Enter the VM name
 - **Description**: Optional
 - **Count**: Number of instances to create (ensure sufficient quota)
-
-<Image
-  src="/docs/Documentation/images/creating-vm/4.png"
-  alt="Instance Details Configuration"
-  width={900}
-  height={500}
-/>
 
 ---
 
@@ -79,17 +55,10 @@ Switch to the **Source** tab:
   - NO → Retains volume
 - Select the **Operating System Image**
 
-<Image
-  src="/docs/Documentation/images/creating-vm/5.png"
-  alt="Source and OS Selection"
-  width={900}
-  height={500}
-/>
-
-
-<Callout type="info">
-Always select <strong>Create New Volume = YES</strong> to allow future OS disk expansion.
-</Callout>
+<info>
+  Always select <strong>Create New Volume = YES</strong>
+   to allow future OS disk expansion.
+</info>
 
 ---
 
@@ -98,13 +67,6 @@ Always select <strong>Create New Volume = YES</strong> to allow future OS disk e
 Switch to the **Flavor** tab:
 
 - Select a **Flavor** (CPU and RAM configuration)
-
-<Image
-  src="/docs/Documentation/images/creating-vm/6.png"
-  alt="Flavor Selection"
-  width={900}
-  height={500}
-/>
 
 ---
 
@@ -116,16 +78,9 @@ Switch to the **Networks** tab:
   - **ILL**
   - **Subnet**
 
-<Image
-  src="/docs/Documentation/images/creating-vm/7.png"
-  alt="Network Selection"
-  width={900}
-  height={500}
-/>
-
-<Callout type="success">
-Selecting both ILL and Subnet helps avoid router creation and saves IP cost.
-</Callout>
+<success>
+  Selecting both ILL and Subnet helps avoid router creation and saves IP cost.
+</success>
 
 ---
 
@@ -136,16 +91,10 @@ Switch to **Security Groups** tab:
 - Default security group is selected automatically
 - Use the arrow icon to select a custom security group
 
-<Image
-  src="/docs/Documentation/images/creating-vm/8.png"
-  alt="Security Group Selection"
-  width={900}
-  height={500}
-/>
-
-<Callout type="warning">
-To create a new security group, refer to the <strong>"Security Group Creation"</strong> guide.
-</Callout>
+<warning>
+  To create a new security group, refer to the <strong>"Security Group Creation"</strong>
+   guide.
+</warning>
 
 ---
 
@@ -155,25 +104,11 @@ Switch to **Key Pair** tab:
 
 - Select your key pair using the arrow
 
-<Image
-  src="/docs/Documentation/images/creating-vm/9.png"
-  alt="Key Pair Selection"
-  width={900}
-  height={500}
-/>
-
 ---
 
 ### Step 9: Launch the Instance
 
 Click **Launch Instance** to create the VM.
-
-<Image
-  src="/docs/Documentation/images/creating-vm/10.png"
-  alt="Launch Instance"
-  width={900}
-  height={500}
-/>
 
 ---
 
@@ -182,13 +117,6 @@ Click **Launch Instance** to create the VM.
 Navigate to:
 
 **Project → Compute → Instances**
-
-<Image
-  src="/docs/Documentation/images/creating-vm/11.png"
-  alt="VM Instance List"
-  width={900}
-  height={500}
-/>
 
 ---
 
