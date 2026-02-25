@@ -19,11 +19,9 @@ To know how to create a subnet, please refer to the subnet creation guide.
 
 ## Step 1: Log in to the Portal
 
-Log in to the xconnect portal using your credentials.
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a>  using your credentials
 
-<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
-  Login to Xloud Portal
-</Button>
+![1](/Documentation/images/creating-vm/1.png)
 
 ---
 
@@ -36,14 +34,11 @@ Follow the navigation path:
 <Steps>
   <Step>Go to the <b>Project</b> tab</Step>
   <Step>Open the <b>Compute</b> section</Step>
-  <Step>Click on <b>Instances</b></Step>
+  <Step>Click on <b>Instance</b></Step>
 </Steps>
 
-<Image
-  src="../images/creating-vm/2.png"
-  alt="Navigate to Instances"
-  width="400"
-/>
+![2](/Documentation/images/creating-vm/2.png)
+
 
 ---
 
@@ -53,11 +48,7 @@ Follow the navigation path:
   <Step>Click on <b>Launch Instances</b></Step>
 </Steps>
 
-<Image
-  src="../images/creating-vm/3.png"
-  alt="Launch Instance Button"
-  width="400"
-/>
+![3](/Documentation/images/creating-vm/3.png)
 
 ---
 
@@ -71,15 +62,11 @@ Under the **Details** tab, specify Instance/VM parameters:
   <Step><b>Count</b>: If you want to create more than 1 instance, input desired number</Step>
 </Steps>
 
+![4](/Documentation/images/creating-vm/4.png)
 <Warning>
 Make sure you have ample quota to create new instances.
 </Warning>
 
-<Image
-  src="../images/creating-vm/4.png"
-  alt="Instance Details Configuration"
-  width="400"
-/>
 
 ---
 
@@ -95,6 +82,7 @@ Switch to the **Source** tab:
   <Step>Select the <b>Operating System/Image</b> from the list</Step>
 </Steps>
 
+![5](/Documentation/images/creating-vm/5.png)
 <Info>
 Select <b>YES</b> for Create New Volume - this allows you to expand your OS drive dynamically after VM deployment. If you select <b>No</b>, the OS will load in fixed size storage.
 </Info>
@@ -103,11 +91,6 @@ Select <b>YES</b> for Create New Volume - this allows you to expand your OS driv
 You can choose to delete the volume when you delete the VM, or keep the volume after VM deletion by selecting the appropriate option.
 </Note>
 
-<Image
-  src="../images/creating-vm/5.png"
-  alt="Source Configuration"
-  width="400"
-/>
 
 ---
 
@@ -116,18 +99,14 @@ You can choose to delete the volume when you delete the VM, or keep the volume a
 Switch to the **Flavor** tab:
 
 <Steps>
-  <Step>Select the preset for the VM to launch</Step>
+  <Step>Select the preset for the VM to launch.</Step>
 </Steps>
-
+![5](/Documentation/images/creating-vm/5.png)
 <Info>
 A flavor is a preset configuration that defines the compute & memory of a VM.
 </Info>
 
-<Image
-  src="../images/creating-vm/6.png"
-  alt="Flavor Selection"
-  width="400"
-/>
+
 
 ---
 
@@ -138,16 +117,12 @@ Switch to the **Networks** tab:
 <Steps>
   <Step>Select both <b>ILL</b> & <b>Subnet</b></Step>
 </Steps>
+![7](/Documentation/images/creating-vm/7.png)
 
 <Tip>
 Selecting both ILL & Subnet will help you save an IP cost which is associated with creating a router.
 </Tip>
 
-<Image
-  src="../images/creating-vm/7.png"
-  alt="Network Configuration"
-  width="400"
-/>
 
 ---
 
@@ -159,6 +134,7 @@ Switch to the **Security Groups** tab:
   <Step>Default security group is selected by default</Step>
   <Step>Select your security group by clicking the arrow up sign</Step>
 </Steps>
+![8](/Documentation/images/creating-vm/8.png)
 
 <Info>
 Security groups are collection of network access rules that are used to limit the types of traffic that have access to instances.
@@ -168,11 +144,6 @@ Security groups are collection of network access rules that are used to limit th
 To create a security group, please refer to the security group creation guide.
 </Note>
 
-<Image
-  src="../images/creating-vm/8.png"
-  alt="Security Group Selection"
-  width="400"
-/>
 
 ---
 
@@ -192,6 +163,7 @@ A **Key Pair** is a security feature used for secure authentication and access t
 #### **Step 1: Log in to Portal**
 
 Log in to the xconnect portal.
+![1](/Documentation/images/creating-vm/1.png)
 
 #### **Step 2: Create Key Pair**
 
@@ -207,6 +179,7 @@ Specify Key Pair parameters:
   <Step><b>Key Type</b>: Select key type (i.e., SSH Key or X509 certificate)</Step>
   <Step>Click on <b>Create Key Pair</b></Step>
 </Steps>
+![9](/Documentation/images/creating-vm/9.png)
 
 <Info>
 After creating a key pair, the private key is automatically generated and downloaded to your system.
@@ -248,15 +221,10 @@ Are you sure you want to continue connecting (yes/no)?
   <Step>Type <b>yes</b> in the terminal and press Enter</Step>
 </Steps>
 
+
 <Tip>
 Once you successfully establish the SSH connection, a new window will open, granting you access to the VM environment.
 </Tip>
-
-<Image
-  src="../images/creating-vm/9.png"
-  alt="Key Pair Selection"
-  width="400"
-/>
 
 ---
 
@@ -265,12 +233,7 @@ Once you successfully establish the SSH connection, a new window will open, gran
 <Steps>
   <Step>Click on <b>Launch Instance</b> to launch the desired instance</Step>
 </Steps>
-
-<Image
-  src="../images/creating-vm/10.png"
-  alt="Launch Instance"
-  width="400"
-/>
+![10](/Documentation/images/creating-vm/10.png)
 
 ---
 
@@ -281,12 +244,7 @@ To locate your created VM:
 `Project → Compute → Instances`
 
 Your VM will be available for use and can be accessed and managed through the dashboard.
-
-<Image
-  src="../images/creating-vm/11.png"
-  alt="VM Instance List"
-  width="400"
-/>
+![11](/Documentation/images/creating-vm/11.png)
 
 ---
 

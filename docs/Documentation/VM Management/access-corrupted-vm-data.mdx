@@ -16,17 +16,9 @@ You can:
 
 ## Step 1: Log in to the Portal
 
-Access the Xloud portal using the link below:
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a>  using your credentials.
 
-<Button href="https://portal-del.xloud.tech/auth/login/?next=/">
-  Login to Xloud Portal
-</Button>
-
-<Image
-  src="../images/creating-vm/1.png"
-  alt="Xloud Login Page"
-  width="400"
-/>
+![1](/Documentation/images/creating-vm/1.png)
 
 ---
 
@@ -42,15 +34,11 @@ Follow the navigation path:
   <Step>Click on <b>Instances</b></Step>
 </Steps>
 
+
+![2](/Documentation/images/creating-vm/2.png)
 <Note>
 Make sure your account has <b>Project → Compute</b> permission to view instances.
 </Note>
-
-<Image
-  src="../images/creating-vm/2.png"
-  alt="Instances Page"
-  width="400"
-/>
 
 ---
 
@@ -63,17 +51,9 @@ Make sure your account has <b>Project → Compute</b> permission to view instanc
   <Step>Click <b>Create Snapshot</b> to begin</Step>
 </Steps>
 
-<Image
-  src="../images/access-corrupted-vm/12.png"
-  alt="Create Snapshot Option"
-  width="400"
-/>
+![12](/Documentation/images/access-corrupted-vm/12.png)
 
-<Image
-  src="../images/access-corrupted-vm/13.png"
-  alt="Snapshot Creation"
-  width="400"
-/>
+![13](/Documentation/images/access-corrupted-vm/13.png)
 
 <Warning>
 Ensure the VM is shut down or properly quiesced before taking a snapshot to avoid filesystem corruption.
@@ -87,11 +67,7 @@ Navigate to:
 
 `Project → Compute → Images`
 
-<Image
-  src="../images/access-corrupted-vm/14.png"
-  alt="Images Section"
-  width="400"
-/>
+![14](/Documentation/images/access-corrupted-vm/14.png)
 
 <Steps>
   <Step>Locate the snapshot created earlier</Step>
@@ -102,23 +78,11 @@ Navigate to:
   <Step>Click <b>Create Volume</b></Step>
 </Steps>
 
-<Image
-  src="../images/access-corrupted-vm/15.png"
-  alt="Snapshot List"
-  width="400"
-/>
+![15](/Documentation/images/access-corrupted-vm/15.png)
 
-<Image
-  src="../images/access-corrupted-vm/16.png"
-  alt="Create Volume Option"
-  width="400"
-/>
+![16](/Documentation/images/access-corrupted-vm/16.png)
 
-<Image
-  src="../images/access-corrupted-vm/17.png"
-  alt="Volume Creation Form"
-  width="400"
-/>
+![17](/Documentation/images/access-corrupted-vm/17.png)
 
 <Info>
 The newly created volume now contains a copy of the corrupted VM's disk data.
@@ -140,7 +104,7 @@ To access the data:
   <Step>Mount the attached volume</Step>
   <Step>Copy the required files</Step>
 </Steps>
-
+![18](/Documentation/images/access-corrupted-vm/18.png)
 <Tip>
 Mount the volume in read-only mode to prevent accidental modification of original data.
 </Tip>

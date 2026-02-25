@@ -1,0 +1,152 @@
+---
+title: How to Create a Snapshot of Volume?
+description: Learn how to create and manage volume snapshots in XConnect Portal for backup and data protection.
+---
+
+
+## What is a Volume Snapshot?
+
+A **Snapshot** is like taking a picture of your volume's data at a specific moment. It acts as a backup, capturing the exact state of the data on the volume at that time.
+
+**Key characteristics:**
+- **Point-in-time capture** - Snapshot preserves the exact state of your volume at the time of creation
+- **Size based on data** - The snapshot size is determined by the amount of data present on the volume
+- **Backup capability** - Use snapshots to protect against data loss or accidental deletions
+- **Cloning source** - Snapshots can be used as a source to create new volumes
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a>  using your credentials
+
+---
+
+## Step 2: Navigate to Volumes
+
+Follow the navigation path:
+
+`Project → Volumes → Volumes`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>In the dropdown menu, click on <b>Volumes</b></Step>
+</Steps>
+
+<Image
+  src="../images/snapshot-creation/navigate-volumes.png"
+  alt="Navigate to Volumes"
+  width="400"
+/>
+
+---
+
+## Step 3: Create Snapshot
+
+To create a snapshot, locate the volume you want to use as the source:
+
+<Steps>
+  <Step>Click on the <b>More Options</b> arrow for the desired volume</Step>
+  <Step>Select <b>Create Snapshot</b> from the menu</Step>
+</Steps>
+
+<Image
+  src="../images/snapshot-creation/more-options-menu.png"
+  alt="More Options Menu"
+  width="400"
+/>
+
+---
+
+## Step 4: Configure Snapshot Details
+
+Enter the following parameters:
+
+<Steps>
+  <Step><b>Snapshot Name</b>: Specify a descriptive name for the snapshot</Step>
+  <Step><b>Description</b>: Optionally, provide a brief description (e.g., "Vol_1 Snapshot Description")</Step>
+</Steps>
+
+<Info>
+The snapshot name should be descriptive to help identify it later, especially when you have multiple snapshots from the same volume.
+</Info>
+
+<Image
+  src="../images/snapshot-creation/snapshot-details.png"
+  alt="Snapshot Configuration Details"
+  width="400"
+/>
+
+---
+
+## Step 5: Create Volume Snapshot
+
+<Steps>
+  <Step>Review all snapshot configuration details</Step>
+  <Step>Click <b>Create Volume Snapshot</b> to finalize</Step>
+</Steps>
+
+<Image
+  src="../images/snapshot-creation/create-snapshot-button.png"
+  alt="Create Volume Snapshot"
+  width="400"
+/>
+
+---
+
+## Step 6: Verify Snapshot Creation
+
+After successfully creating the snapshot, locate it by following this path:
+
+`Project → Volumes → Snapshots`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>Click on <b>Snapshots</b> from the dropdown menu</Step>
+  <Step>Verify your snapshot appears in the list with <b>Available</b> status</Step>
+</Steps>
+
+<Tip>
+Once the snapshot status shows "Available", you can use it as a source to create new volumes.
+</Tip>
+
+<Image
+  src="../images/snapshot-creation/snapshot-list.png"
+  alt="Snapshot List View"
+  width="400"
+/>
+
+---
+
+## Using Snapshots
+
+### **Creating a Volume from Snapshot**
+
+You can create a new volume using an existing snapshot:
+
+<Steps>
+  <Step>Navigate to the <b>Snapshots</b> list</Step>
+  <Step>Click on the <b>More Options</b> arrow for your snapshot</Step>
+  <Step>Select <b>Create Volume</b></Step>
+  <Step>Configure the new volume details</Step>
+  <Step>Confirm the creation</Step>
+</Steps>
+
+### **Common Snapshot Use Cases**
+
+- **Data backup** - Regular snapshots for disaster recovery
+- **Volume cloning** - Create identical volumes from snapshots
+- **Version control** - Maintain different versions of your data
+- **Testing** - Create test environments from production snapshots
+
+<Warning>
+Snapshots consume storage space. Regularly review and delete unnecessary snapshots to optimize storage usage.
+</Warning>
+
+---
+
+## Snapshot Successfully Created
+
+Your volume snapshot is now ready and can be used as a backup source or to create new volumes with the same data state.
