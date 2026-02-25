@@ -1,0 +1,86 @@
+---
+title: How to Resize a Volume?
+description: Learn how to resize and extend volumes in XConnect Portal to increase storage capacity.
+---
+
+## What is Volume Resizing?
+
+When you resize a volume, you're essentially making it bigger to hold more data and work more efficiently. This can be helpful when you need more storage space for your files or when you want to improve the performance of your applications.
+
+**Key points:**
+- **Expansion only** - You can only increase the size of a volume, not decrease it
+- **Non-disruptive** - Can be done on volumes that are attached to running VMs
+- **Flexible** - Adjust storage capacity as your needs grow
+- **Immediate** - Size increase is applied quickly to the system
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a>  using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+## Step 2: Navigate to Volumes
+
+Follow the navigation path:
+
+`Project → Volumes → Volumes`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>In the dropdown menu, click on <b>Volumes</b></Step>
+</Steps>
+
+---
+
+## Step 3: Access Volume Options
+
+To resize a volume, click on the **"More Options"** arrow for the volume you want to resize. This will provide additional actions specific to that volume.
+
+<Image
+  src="../images/volume-creation/more-options.png"
+  alt="Volume More Options"
+  width="400"
+/>
+
+---
+
+## Step 4: Select Extend Volume
+
+From the options menu, click on **Extend Volume**.
+
+---
+
+## Step 5: Enter New Volume Size
+
+<Steps>
+  <Step>Enter the desired new size (in GiB) for the volume</Step>
+  <Step>Note that the new size must be greater than the current size, as volume resizing cannot be reduced</Step>
+</Steps>
+
+<Image
+  src="../images/volume-creation/extend-volume-size.png"
+  alt="Enter New Volume Size"
+  width="400"
+/>
+
+---
+
+## Step 6: Confirm the Extension
+
+To finalize the process, click on the **"Extend Volume"** button.
+
+This action will initiate the process of increasing the size of the selected volume. You can access the extended volume in your VM (if attached).
+
+---
+
+## Post-Resize Configuration
+
+Once you have resized a volume that is attached to your VM, you may need to extend the volume in the Disk management tool within your operating system to recognize and utilize the additional space.
+
+<Note>
+  The storage space is immediately available at the hypervisor level, but your operating system may need additional configuration to recognize and use the newly added capacity.
+</Note>

@@ -61,7 +61,9 @@
           {
             "group": "Storage Management",
             "pages": [
-              "Documentation/Storage Management/How to create a volume"
+              "Documentation/Storage Management/How to create a volume",
+              "Documentation/Storage Management/how to create a snapshot of volume",
+              "Documentation/Storage Management/how to resize a volume"
             ]
           },
           {
