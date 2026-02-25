@@ -1,0 +1,99 @@
+---
+title: How to Create a Backup of Volume?
+description: Learn how to create backups of volumes in XConnect Portal for data protection and recovery.
+---
+
+## What is Volume Backup?
+
+A **Backup** of a volume refers to a complete copy of the volume's data that is stored in a separate location from where snapshot is saved. Unlike snapshots, backups provide a fully independent copy of your volume data.
+
+**Key characteristics:**
+- **Complete Copy** - A full duplication of all volume data
+- **Separate Storage** - Stored in a different location than snapshots
+- **Recovery** - Can be used to restore volume data at any point in time
+- **Data Protection** - Provides additional redundancy and protection against data loss
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+
+## Step 2: Navigate to Volumes
+
+Follow the navigation path:
+
+`Project → Volumes → Volumes`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>In the dropdown menu, click on <b>Volumes</b></Step>
+</Steps>
+
+![24](/Documentation/images/image-management/24.png)
+
+---
+
+## Step 3: Access Volume Options
+
+To create a backup of a volume, click on the **"More Options"** arrow for the volume. This will provide additional actions specific to that volume.
+
+Click on the **"Create Backup"** button.
+
+![55](/Documentation/images/image-management/55.png)
+
+---
+
+## Step 4: Configure Backup Details
+
+Enter the following parameters:
+
+### **Backup Information**
+
+<Steps>
+  <Step><b>Backup Name</b>: Specify a name for the backup</Step>
+  <Step><b>Description</b>: Optionally, provide a brief description for the backup (e.g., "Vol_1 Backup Description")</Step>
+</Steps>
+
+### **Backup Source**
+
+<Steps>
+  <Step>Optionally, in the <b>Backup Snapshot</b> section, you can select a snapshot of a particular volume to create a backup of that snapshot</Step>
+</Steps>
+
+![56](/Documentation/images/image-management/56.png)
+
+---
+
+## Step 5: Complete Backup Creation
+
+To finalize the process, click on the **"Create Volume Backup"** button.
+
+The backup process will be initiated and your volume data will be copied to the backup storage location.
+
+---
+
+## Accessing Your Backup
+
+Once you have created a backup of a volume, you can easily locate it by following these steps:
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Volumes</b> tab</Step>
+  <Step>Click on <b>Backup</b></Step>
+</Steps>
+
+Here you will see all your created backups and can manage them as needed.
+
+![46](/Documentation/images/image-management/46.png)
+
+---
+
+## Next Steps
+
+Once you have created a backup of a volume, you can restore it whenever needed. For instructions on how to restore a backup, please refer to the [How to Restore Volume Snapshot and Backup guide](how%20to%20restore%20volume%20snapshot%20and%20backup).

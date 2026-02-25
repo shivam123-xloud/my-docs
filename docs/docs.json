@@ -63,13 +63,17 @@
             "pages": [
               "Documentation/Storage Management/How to create a volume",
               "Documentation/Storage Management/how to create a snapshot of volume",
-              "Documentation/Storage Management/how to resize a volume"
+              "Documentation/Storage Management/how to resize a volume",
+              "Documentation/Storage Management/how to restore volume snapshot and backup",
+              "Documentation/Storage Management/how to attach volume to vm and move volume to another vm",
+              "Documentation/Storage Management/how to create a backup of volume"
             ]
           },
           {
             "group": "Network Management",
             "pages": [
               "Documentation/Network Management/router",
+              "Documentation/Network Management/how to Create subnet",
               "Documentation/Network Management/how to connect multiple interfaces"
             ]
           },

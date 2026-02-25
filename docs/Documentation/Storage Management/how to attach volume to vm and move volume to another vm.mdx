@@ -1,0 +1,134 @@
+---
+title: How to Attach Volume to VM and Move Volume to Another VM?
+description: Learn how to attach volumes to virtual machines and move volumes between VMs in XConnect Portal.
+---
+
+## What is Volume Attachment?
+
+Volume attachment refers to the process of associating or linking a storage volume with a specific virtual machine (VM). This allows the VM to access and use the storage capacity provided by the attached volume.
+
+**Key points:**
+- **Access** - Once attached, the VM can read and write data to the volume
+- **Flexible** - Volumes can be attached and detached from VMs as needed
+- **Portable** - A volume can be moved from one VM to another
+- **Persistent** - Data remains on the volume even when detached from a VM
+
+---
+
+## Attaching Volume to VM
+
+### Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+
+### Step 2: Navigate to Volumes
+
+Follow the navigation path:
+
+`Project → Volumes → Volumes`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>In the dropdown menu, click on <b>Volumes</b>
+  ![24](/Documentation/images/image-management/24.png)</Step>
+</Steps>
+
+---
+
+### Step 3: Access Volume Options
+
+To attach a volume to a VM, click on the **"More Options"** arrow for the desired volume. This will reveal additional actions specific to that volume, including the option to attach it to a VM.
+
+Click on **Manage Attachments**.
+![50](/Documentation/images/image-management/50.png)
+
+---
+
+### Step 4: Select Instance
+
+Click on the **"Select an instance"** option under the **"Attach to instance"** section. This will allow you to choose the specific instance to which you want to attach the volume.
+
+Choose the desired VM to which you want to attach the volume.
+![51](/Documentation/images/image-management/51.png)
+
+---
+
+### Step 5: Complete Attachment
+
+Click on the **"Attach Volume"** button to complete the process.
+
+![52](/Documentation/images/image-management/52.png)
+
+Once a volume is successfully attached to a virtual machine (VM), you will see the name of the VM listed under the **"Attached To"** section of the volume details.
+
+![53](/Documentation/images/image-management/53.png)
+---
+
+## Moving Volume from One VM to Another
+
+### Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+
+### Step 2: Navigate to Volumes
+
+Follow the navigation path:
+
+`Project → Volumes → Volumes`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Click on <b>Volumes</b> tab</Step>
+  <Step>In the dropdown menu, click on <b>Volumes</b>
+  ![24](/Documentation/images/image-management/24.png)</Step>
+</Steps>
+
+---
+
+### Step 3: Access Volume Options
+
+Click on the **"More Options"** arrow for the volume you want to move. This will reveal additional actions specific to that volume.
+
+---
+
+### Step 4: Detach Volume from Current VM
+
+Click on **Manage Attachments**, then select the **"Detach Volume"** option to detach the volume from the current VM. This will initiate the process of removing the volume from the current VM, allowing you to move it to another VM.
+![50](/Documentation/images/image-management/50.png)
+To confirm the detachment of the volume from the current VM, click on the **"Detach Volume"** button once again.
+![54](/Documentation/images/image-management/54.png)
+<Note>
+  The volume will be safely detached and all data will be preserved. The volume can now be attached to another VM.
+</Note>
+
+---
+
+### Step 5: Attach Volume to Another VM
+
+Repeat the following steps to attach the volume to a different VM:
+
+<Steps>
+  <Step>Click on <b>Manage Attachments</b> for the detached volume</Step>
+  <Step>Click on <b>"Select an instance"</b> to choose another VM</Step>
+  <Step>Select the desired VM</Step>
+  <Step>Click on <b>"Attach Volume"</b> to attach the previously detached volume to the new VM
+  ![51](/Documentation/images/image-management/51.png)</Step>
+</Steps>
+
+Once a volume is successfully attached to another VM, you will typically see the name of the new VM listed under the **"Attached To"** section of the volume details.
+
+---
+
+## Important Considerations
+
+<Note>
+  Ensure that the source VM is not actively writing to the volume when detaching it to prevent data corruption. After attaching a volume to a new VM, you may need to initialize the file system or mount the volume within the operating system.
+</Note>

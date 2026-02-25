@@ -1,0 +1,179 @@
+---
+title: How to Create a Subnet?
+description: Learn how to create subnets for network management in XConnect Portal.
+---
+
+
+## What is a Subnet?
+
+A **Subnet** is a subdivision of an IP network range that allows you to define a smaller, manageable portion of IP addresses within a larger network.
+
+**Key characteristics:**
+- **IP address subdivision** - Divides larger network into smaller segments
+- **Network management** - Provides organized and efficient IP address allocation
+- **Resource isolation** - Enables logical separation of network resources
+- **DHCP support** - Supports automatic IP address assignment and network configuration
+- **Gateway routing** - Controls network traffic routing and access
+
+---
+
+## Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+
+## Step 2: Navigate to Networks
+
+Follow the navigation path:
+
+`Project → Network → Networks`
+
+<Steps>
+  <Step>On the <b>Project</b> tab, open the <b>Network</b> tab</Step>
+  <Step>From the dropdown menu, click on <b>Networks</b>
+  ![62](/Documentation/images/network-management/62.png)</Step>
+</Steps>
+
+---
+
+## Step 3: Create a Network
+
+<Steps>
+  <Step>Click on <b>Create Network</b> button
+  ![63](/Documentation/images/network-management/63.png)</Step>
+</Steps>
+
+---
+
+## Step 4: Configure Network Parameters
+
+Enter the following network parameters:
+
+<Steps>
+  <Step><b>Network Name</b>: Specify a name to identify the network</Step>
+  <Step><b>Admin State</b>: Select this check box to enable the network</Step>
+  <Step><b>Create Subnet</b>: Select this check box to create a subnet along with the network
+  ![64](/Documentation/images/network-management/64.png)</Step>
+</Steps>
+
+<Info>
+Enabling the Admin State immediately makes the network available for use. Creating a subnet at the same time streamlines the network setup process.
+</Info>
+
+---
+
+## Step 5: Define Subnet Parameters
+
+Go to the **Subnet** tab and specify the following subnet parameters:
+
+<Steps>
+  <Step><b>Subnet Name</b>: Specify a descriptive name for the subnet</Step>
+  <Step><b>Network Address</b>: Specify the IP address for the subnet in CIDR notation (e.g., 10.0.0.0/24 where the prefix is the binary representation of the network address and the suffix declares the total number of bits in the entire address)</Step>
+  <Step><b>IP Version</b>: Select <b>IPv4</b> for Internet Protocol version 4</Step>
+  <Step><b>Gateway IP</b>: A gateway IP refers to a device on a network which sends local network traffic to other networks. To use the default gateway, leave this field blank
+  ![65](/Documentation/images/network-management/65.png)</Step>
+</Steps>
+
+<details>
+<summary><b>📋 CIDR Notation Examples - Click to Expand</b></summary>
+
+**Common CIDR Ranges:**
+- **10.0.0.0/24** - 254 usable addresses (small networks, development)
+- **10.0.0.0/22** - 1022 usable addresses (medium networks, production)
+- **10.0.0.0/20** - 4094 usable addresses (large networks, enterprise)
+- **10.0.0.0/16** - 65534 usable addresses (very large networks)
+
+</details>
+
+<Tip>
+Plan your CIDR notation carefully during the design phase to ensure you have enough IP addresses for current needs and future growth.
+</Tip>
+
+---
+
+## Step 6: Configure Subnet Details
+
+Switch to the **Subnet Details** tab to configure additional settings:
+
+<Steps>
+  <Step><b>Enable DHCP</b>: Select this check box to enable DHCP</Step>
+  <Step><b>Allocation Pool</b>: Define the range of IP addresses to be assigned by DHCP (optional, uses default range if not specified)</Step>
+  <Step><b>DNS Name Servers</b>: Specify the DNS server names for name resolution. Common options include: Google DNS (8.8.8.8 8.8.4.4), Airtel DNS (202.56.230.2 202.56.230.7), or Cloudflare DNS (1.1.1.1 1.0.0.1)
+  ![66](/Documentation/images/network-management/66.png)</Step>
+</Steps>
+
+<Info>
+DHCP (Dynamic Host Configuration Protocol) automatically assigns IP addresses to devices on the subnet, making network configuration easier and more efficient without manual IP assignment.
+</Info>
+
+---
+
+## Step 7: Finalize Subnet Creation
+
+<Steps>
+  <Step>Review all configuration details</Step>
+  <Step>Click on the <b>Create</b> button to finalize the process
+  ![67](/Documentation/images/network-management/67.png)</Step>
+</Steps>
+
+<Tip>
+Take a moment to verify all settings before clicking Create. Once created, some settings like CIDR notation cannot be easily changed.
+</Tip>
+
+---
+
+## Step 8: Verify Subnet Creation
+
+<Steps>
+  <Step>Navigate back to <b>Project → Network → Networks</b></Step>
+  <Step>Locate your newly created subnet in the list</Step>
+  <Step>Verify the subnet status and configuration details
+  ![62](/Documentation/images/network-management/62.png)</Step>
+</Steps>
+
+---
+
+## Subnet Configuration Best Practices
+
+**Network Planning Considerations:**
+- **CIDR notation** - Choose appropriate subnet mask for your resource needs
+- **IP addressing** - Plan for current usage plus future growth
+- **Gateway configuration** - Use default or custom gateway based on network requirements
+- **DNS resolution** - Select reliable DNS servers for name resolution
+- **DHCP settings** - Configure appropriate allocation pools to avoid address conflicts
+
+**Common Subnet Scenarios:**
+
+*Development Environment:* Network 10.0.0.0/24 with 254 usable IP addresses, DHCP enabled for development and testing.
+
+*Production Environment:* Network 10.0.0.0/22 with 1022 usable IP addresses, DHCP enabled with managed pools for business-critical applications.
+
+*Large Enterprise:* Network 10.0.0.0/16 with 65534 usable IP addresses, DHCP enabled with segmented pools for multi-department deployments.
+
+<Warning>
+Plan your subnetting strategy in advance. Hasty or incorrect subnet configuration can lead to connectivity issues and operational challenges.
+</Warning>
+
+---
+
+## Next Steps
+
+Once you have created a subnet, you can:
+
+<Steps>
+  <Step>Create and configure routers to provide internet access</Step>
+  <Step>Attach network interfaces to instances within the subnet</Step>
+  <Step>Configure security groups for traffic control and isolation</Step>
+  <Step>Launch virtual machines within the subnet</Step>
+</Steps>
+
+For instructions on how to create routers and connect to your subnet, refer to the [How to Create a Router guide](router).
+
+---
+
+## Subnet Successfully Created
+
+Your network subnet is now configured and ready for use. Instances launched within this subnet will automatically receive IP addresses and network configuration based on your DHCP and DNS settings.

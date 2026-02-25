@@ -1,0 +1,129 @@
+---
+title: How to Restore Volume Snapshot and Backup?
+description: Learn how to restore volume snapshots and backups in XConnect Portal.
+---
+
+## What is Volume Restoration?
+
+Volume restoration refers to the process of recovering a volume from either a snapshot or backup. 
+
+- **Snapshot**: A point-in-time copy of the volume's data, including its configuration, files, and settings
+- **Backup**: A full copy of the volume's data, typically including all its contents and attributes
+
+---
+
+## Restoring Volume Snapshot
+
+### Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+
+---
+
+### Step 2: Navigate to Snapshots
+
+Follow the navigation path:
+
+`Project → Volumes → Snapshots`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Volumes</b> tab</Step>
+  <Step>Click on <b>Snapshots</b>
+  ![38](/Documentation/images/image-management/38.png)</Step>
+</Steps>
+
+---
+
+### Step 3: Select Snapshot to Restore
+
+Click the **"Create Volume"** button of the desired snapshot to restore it as a new volume.
+![37](/Documentation/images/image-management/37.png)
+
+---
+
+### Step 4: Specify Volume Parameters
+
+Enter the following details for the restored volume:
+
+<Steps>
+  <Step><b>Volume Name</b>: Specify a name for the volume</Step>
+  <Step><b>Description</b>: Optionally, provide a brief description (e.g., "Vol_1 Snapshot restore Description")</Step>
+  <Step><b>Use snapshot as a source</b>: The snapshot you chose will be automatically selected as the source for the restoration process</Step>
+  <Step><b>Size (GiB)</b>: The size of the restoring volume in gibibytes (GiB). Note: You can extend the size of volume while restoring snapshot</Step>
+  <Step><b>Group</b>: Select the group which the new volume belongs to. Choose 'No group' if the new volume belongs to no group
+  ![39](/Documentation/images/image-management/39.png)</Step>
+</Steps>
+
+---
+
+### Step 5: Complete Restoration
+
+To complete the restoration of the snapshot as a new volume, click on the **"Create Volume"** button.
+
+<Note>
+  Alternatively, you can restore volume snapshot by directly creating a volume and selecting source type as snapshot.
+</Note>
+
+---
+
+## Restoring Volume Backup
+
+### Step 1: Log in to the Portal
+
+Log in to the <a href="https://portal-del.xloud.tech/auth/login/?next=/" target="_blank">xconnect portal</a> using your credentials.
+
+![1](/Documentation/images/creating-vm/1.png)
+---
+
+### Step 2: Navigate to Backups
+
+Follow the navigation path:
+
+`Project → Volumes → Backup`
+
+<Steps>
+  <Step>Go to the <b>Project</b> tab</Step>
+  <Step>Open the <b>Volumes</b> tab</Step>
+  <Step>Click on <b>Backup</b></Step>
+</Steps>
+![46](/Documentation/images/image-management/46.png)
+---
+
+### Step 3: Select Restore Option
+
+Click on the **"Restore Backup"** button for the desired volume to initiate restoration.
+![47](/Documentation/images/image-management/47.png)
+---
+
+### Step 4: Choose Restore Destination
+
+In **"Select Volume"**, you have two options to restore a backup of a volume:
+
+<Steps>
+  <Step>Create a new volume</Step>
+  <Step>Restore into an existing volume
+  ![48](/Documentation/images/image-management/48.png)</Step>
+</Steps>
+
+<Note>
+  You can only select an existing volume to restore backup when it is not attached to any VM. After restoring backup, all the previous data on that volume will be erased.
+</Note>
+
+---
+
+### Step 5: Complete Backup Restoration
+
+Click on the **"Restore Backup to Volume"** button to complete the restoration process.
+![49](/Documentation/images/image-management/49.png)
+<Note>
+After restoring backup, a new volume of the same name will be created and is ready to be used.
+</Note>
+
+---
+
+## Next Steps
+
+Once you have restored a volume from snapshot or backup, you can attach it to a VM to access the data. For instructions on how to attach a volume to a VM, please refer to the VM attachment guide.
