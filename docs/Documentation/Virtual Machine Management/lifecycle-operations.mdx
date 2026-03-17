@@ -1,0 +1,348 @@
+---
+title: "Create / Delete / Restart / Start / Stop / Suspend & Discovery"
+description: "Manage the complete VM lifecycle — create, delete, restart, start, stop, suspend, resume, and discover virtual machines on the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- At least one flavor, image, and network available in the project
+- Sufficient project quota for intended operations
+
+---
+
+## VM Status Lifecycle
+
+| Status | Description |
+|---|---|
+| `BUILD` | VM is being provisioned |
+| `ACTIVE` | VM is running |
+| `SHUTOFF` | VM is powered off |
+| `PAUSED` | VM is frozen in memory |
+| `SUSPENDED` | VM state saved to disk |
+| `REBOOT` | VM is rebooting |
+| `HARD_REBOOT` | VM is being power-cycled |
+| `ERROR` | VM encountered a failure |
+| `DELETED` | VM is permanently removed |
+
+---
+
+## Create VM
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Open Launch Wizard">
+Navigate to **Project** → **Compute** → **Instances** → Click **Launch Instance**.
+      </Step>
+      <Step title="Configure Details">
+
+- **Name** — Instance name (required)
+- **Description** — Optional description
+- **Availability Zone** — Target zone for placement
+- **Count** — Number of instances to launch
+      </Step>
+      <Step title="Select Source">
+Choose boot source:
+
+- **Image** — Boot from a Xloud image
+- **Volume** — Boot from an existing volume
+- **Snapshot** — Boot from a volume or instance snapshot
+- Toggle **Create New Volume** to persist the root disk
+      </Step>
+      <Step title="Select Flavor">
+Choose the resource profile (vCPUs, RAM, disk).
+      </Step>
+      <Step title="Configure Network">
+Attach one or more networks from the **Available** list to **Allocated**.
+      </Step>
+      <Step title="Set Security & Access">
+
+- **Security Groups** — Assign firewall rules
+- **Key Pair** — Select SSH keypair for access
+      </Step>
+      <Step title="Optional Configuration">
+
+- **Configuration** — Enable config drive, inject user data
+- **Metadata** — Set custom key-value pairs
+      </Step>
+      <Step title="Launch">
+Click **Launch Instance**. The VM enters `BUILD` → `ACTIVE`.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Basic creation:
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --network my-network \
+  --key-name my-keypair \
+  --security-group default \
+  my-instance
+```
+
+Boot from volume:
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --block-device source=image,id=<image-id>,dest=volume,size=50,bootindex=0,shutdown=remove \
+  --network my-network \
+  my-instance
+```
+
+Create with user data and metadata:
+```bash
+xloud server create \
+  --flavor m1.large \
+  --image ubuntu-22.04 \
+  --network my-network \
+  --user-data cloud-init.yaml \
+  --property env=production \
+  --property app=webserver \
+  --availability-zone az-1 \
+  my-instance
+```
+
+Batch creation:
+```bash
+xloud server create \
+  --flavor m1.small \
+  --image ubuntu-22.04 \
+  --network my-network \
+  --min 3 --max 5 \
+  batch-instance
+```
+
+**Supported creation parameters:**
+
+| Parameter | Description | Required |
+|---|---|---|
+| `name` | Instance name | Yes |
+| `flavorRef` | Flavor (vCPUs, RAM, disk) | Yes |
+| `networks` | Network attachments | Yes |
+| `imageRef` | Boot image (unless boot-from-volume) | Conditional |
+| `block_device_mapping_v2` | Block device configuration | No |
+| `key_name` | SSH keypair | No |
+| `security_groups` | Firewall rule groups | No |
+| `availability_zone` | Target availability zone | No |
+| `metadata` | Custom key-value pairs (max 255 bytes each) | No |
+| `user_data` | Base64-encoded cloud-init data | No |
+| `config_drive` | Enable metadata injection drive | No |
+| `tags` | VM tags (max 50, up to 60 chars each) | No |
+| `hostname` | Custom hostname (2.90+), FQDN (2.94+) | No |
+| `description` | Instance description (2.19+) | No |
+| `scheduler_hints` | Scheduler hints (group, zone) | No |
+  </Tab>
+</Tabs>
+
+---
+
+## Delete VM
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Delete Instance** → Confirm.
+
+To restore a soft-deleted instance: **Admin** → **Instances** → Filter **Soft Deleted** → **Restore Instance**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud server delete <server-id>
+```
+
+Force delete (bypass deferred cleanup):
+```bash
+xloud server delete --force <server-id>
+```
+
+Restore soft-deleted instance:
+```bash
+xloud server restore <server-id>
+```
+  </Tab>
+</Tabs>
+
+<Info>
+If `reclaim_instance_interval` is configured, deleted VMs enter `SOFT_DELETED` state and can be restored within the reclaim window.
+</Info>
+
+---
+
+## Restart (Reboot)
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Soft Reboot Instance** or **Hard Reboot Instance**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Soft reboot (graceful OS-level restart)
+xloud server reboot --soft <server-id>
+
+# Hard reboot (power cycle)
+xloud server reboot --hard <server-id>
+```
+  </Tab>
+</Tabs>
+
+| Type | Behavior |
+|---|---|
+| **Soft Reboot** | Graceful OS shutdown and restart. Applications receive shutdown signals. |
+| **Hard Reboot** | Immediate power cycle. Equivalent to pulling the power cord. |
+
+---
+
+## Start / Stop
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Start Instance** or **Stop Instance**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud server start <server-id>
+xloud server stop <server-id>
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Suspend / Resume
+
+Suspend saves VM state to disk, freeing hypervisor memory. Resume restores the exact running state.
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Suspend Instance** / **Resume Instance**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud server suspend <server-id>
+xloud server resume <server-id>
+```
+  </Tab>
+</Tabs>
+
+<Accordion title="Additional State Operations">
+
+**Pause / Unpause** — Freeze VM in memory (instant resume, but continues consuming RAM):
+```bash
+xloud server pause <server-id>
+xloud server unpause <server-id>
+```
+
+**Shelve / Unshelve** — Archive VM and free all host resources:
+```bash
+xloud server shelve <server-id>
+xloud server unshelve <server-id>
+```
+
+**Lock / Unlock** — Prevent non-admin actions on a VM:
+```bash
+xloud server lock <server-id>
+xloud server unlock <server-id>
+```
+
+**Rescue / Unrescue** — Boot from rescue image for troubleshooting:
+```bash
+xloud server rescue <server-id>
+xloud server unrescue <server-id>
+```
+
+</Accordion>
+
+---
+
+## Discovery (List & Show)
+
+<Tabs>
+  <Tab title="GUI">
+Navigate to **Project** → **Compute** → **Instances** to view all VMs.
+
+Use filters at the top to search by name, status, flavor, image, or tags.
+
+Click an instance name to view full details including network, volumes, console, and action log.
+  </Tab>
+  <Tab title="CLI">
+```bash
+# List all VMs
+xloud server list
+
+# List with full details
+xloud server list --long
+
+# Filter by status
+xloud server list --status ACTIVE
+
+# Filter by name
+xloud server list --name "web-*"
+
+# Filter by tags
+xloud server list --tags production
+
+# Show single VM details
+xloud server show <server-id>
+
+# List all projects (admin)
+xloud server list --all-projects
+```
+  </Tab>
+</Tabs>
+
+**Supported discovery filters:**
+
+| Filter | Description |
+|---|---|
+| `--status` | Filter by VM status (`ACTIVE`, `SHUTOFF`, etc.) |
+| `--name` | Filter by name (supports regex) |
+| `--flavor` | Filter by flavor |
+| `--image` | Filter by image |
+| `--host` | Filter by hypervisor host (admin) |
+| `--tags` | VMs with all specified tags |
+| `--tags-any` | VMs with any of the specified tags |
+| `--not-tags` | VMs without all specified tags |
+| `--changes-since` | VMs changed after timestamp |
+| `--changes-before` | VMs changed before timestamp |
+| `--locked` | Filter by lock status |
+| `--all-projects` | List across all projects (admin) |
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify VM Lifecycle">
+```bash
+xloud server show <server-id> -c status -c flavor -c addresses -c image
+```
+Confirm status, assigned flavor, network addresses, and boot image.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Boot from Volume" icon="hard-drive">
+Use boot-from-volume for production VMs. Enables live migration and provides persistent root disks independent of the compute host.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="VM Stuck in BUILD State">
+
+**Resolution:**
+1. Check instance actions: `xloud server event list <server-id>`
+2. Review scheduler logs: `journalctl -u nova-scheduler`
+3. Verify image, flavor, and network exist and are accessible
+4. Admin reset if unrecoverable: `xloud server set --state error <server-id>`
+
+</Accordion>

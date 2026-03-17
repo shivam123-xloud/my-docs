@@ -1,0 +1,160 @@
+---
+title: "Snapshot Operations — Create / Delete / Revert"
+description: "Create, delete, and revert VM snapshots for point-in-time recovery and backup on the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- Sufficient project quota for intended operations
+
+---
+
+## Concepts
+
+Xloud supports two types of snapshots:
+
+| Type | Description | Use Case |
+|---|---|---|
+| **Instance Snapshot** | Creates an image from the VM's current disk state | Full VM backup, template creation |
+| **Server Backup** | Creates a snapshot with rotation policy | Automated recurring backups |
+
+<Note>
+Instance snapshots create a new image in the Xloud Image service. For volume-backed VMs, a volume snapshot is created in the Block Storage service.
+</Note>
+
+---
+
+## Create Snapshot
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Navigate to Instance">
+Go to **Project** → **Compute** → **Instances** → Select the instance.
+      </Step>
+      <Step title="Create Snapshot">
+Click **Actions** → **Create Snapshot** → Enter a **Snapshot Name** → Click **Create Snapshot**.
+      </Step>
+      <Step title="Verify">
+Navigate to **Project** → **Compute** → **Images**. The snapshot appears as a new image with status `ACTIVE`.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Create an instance snapshot:
+```bash
+xloud server image create <server-id> --name my-snapshot
+```
+
+Create a snapshot from a volume-backed instance:
+```bash
+xloud server image create <server-id> --name my-vol-snapshot
+```
+
+Create a backup with rotation (keeps last N backups):
+```bash
+xloud server backup create <server-id> \
+  --name daily-backup \
+  --type daily \
+  --rotation 7
+```
+Retains the 7 most recent daily backups, automatically deleting older ones.
+  </Tab>
+</Tabs>
+
+---
+
+## Delete Snapshot
+
+<Tabs>
+  <Tab title="GUI">
+Navigate to **Project** → **Compute** → **Images** → Select the snapshot → **Actions** → **Delete Image** → Confirm.
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud image delete <snapshot-id>
+```
+
+Verify deletion:
+```bash
+xloud image list --name my-snapshot
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Revert (Rebuild from Snapshot)
+
+Revert a VM to a previous snapshot by rebuilding it with the snapshot image. The VM retains its network configuration, IP addresses, and instance ID.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Select Instance">
+Go to **Instances** → Select the instance → **Actions** → **Rebuild Instance**.
+      </Step>
+      <Step title="Choose Snapshot">
+In the **Image** dropdown, select the previously created snapshot.
+      </Step>
+      <Step title="Confirm Rebuild">
+Click **Rebuild Instance**. The VM reverts to the state captured in the snapshot.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud server rebuild <server-id> --image <snapshot-id>
+```
+
+Verify the rebuild:
+```bash
+xloud server show <server-id> -c status -c image
+```
+Status should return to `ACTIVE` with the snapshot image.
+  </Tab>
+</Tabs>
+
+<Warning>
+Rebuild replaces the root disk entirely. Any data written after the snapshot was taken will be lost. Attached volumes are not affected.
+</Warning>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Snapshot">
+```bash
+xloud image list --name my-snapshot
+xloud image show <snapshot-id> -c status -c size
+```
+Snapshot should have status `active`.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Snapshot Before Changes" icon="camera">
+Create a snapshot before resize, rebuild, or major OS updates. This provides a rollback point if the operation fails.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Snapshot Creation Fails">
+
+**Resolution:**
+1. Verify VM is in a valid state (`ACTIVE` or `SHUTOFF`)
+2. Check image service quota: `xloud image list` to verify storage capacity
+3. For volume-backed VMs, verify Block Storage service is healthy
+4. Review nova-compute logs: `journalctl -u nova-compute`
+
+</Accordion>

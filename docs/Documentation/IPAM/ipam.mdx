@@ -1,0 +1,712 @@
+---
+title: "IP Address Management (IPAM)"
+description: "Xloud IPAM provides automated IP address reservation and allocation for virtual machines during provisioning — with pluggable drivers, subnet pools, address scopes, and DHCP integration."
+---
+
+## Overview
+
+The Xloud hypervisor includes a built-in IP Address Management (IPAM) system that **automatically reserves and assigns IP addresses** to virtual machines during the provisioning process. When a VM is created, the IPAM engine allocates an IP from the configured subnet, assigns it to the VM's port, and configures DHCP — requiring zero manual intervention.
+
+<CardGroup cols={3}>
+  <Card title="Automatic Allocation" icon="wand-magic-sparkles">
+IP addresses are reserved from the subnet pool and assigned to VM ports automatically during provisioning.
+  </Card>
+  <Card title="Pluggable Drivers" icon="plug">
+Supports built-in IPAM and external providers (Infoblox, BlueCat, SolarWinds) through a pluggable driver architecture.
+  </Card>
+  <Card title="No Overlap Guarantee" icon="shield-check">
+Subnet pools and address scopes enforce non-overlapping address allocation across projects and networks.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture / Concepts
+
+### How IPAM Works During VM Provisioning
+
+When a VM is created, the following IP allocation process occurs automatically:
+
+```
+VM Create Request
+       ↓
+Network Service receives port creation
+       ↓
+IPAM Driver selects available IP from subnet
+       ↓
+IP reserved and assigned to port
+       ↓
+MAC address generated
+       ↓
+DHCP agent updates lease
+       ↓
+VM boots and receives IP via DHCP
+```
+
+1. The Compute service requests a port on the specified network
+2. The Network service invokes the IPAM driver to allocate an IP address from the subnet
+3. The IPAM driver selects the next available address (or a requested specific address)
+4. The address is reserved and bound to the port — no other VM can receive it
+5. The DHCP agent creates a lease entry for the allocated address
+6. The VM boots and obtains its IP configuration via DHCP
+
+### IPAM Components
+
+| Component | Description |
+|---|---|
+| **IPAM Driver** | Manages IP allocation/deallocation logic (internal or external) |
+| **Subnet** | Block of IP addresses with associated configuration (gateway, DNS, DHCP range) |
+| **Subnet Pool** | Managed pool of address prefixes from which subnets are allocated |
+| **Address Scope** | Routing domain that prevents overlapping addresses across subnet pools |
+| **Port** | Network attachment point with MAC and IP addresses assigned by IPAM |
+| **DHCP Agent** | Delivers IP configuration to VMs via DHCP protocol |
+| **Fixed IP** | IP address allocated from a subnet and assigned to a VM port |
+| **Floating IP** | Externally routable IP mapped to a fixed IP via NAT |
+
+### Pluggable IPAM Architecture
+
+The Xloud IPAM framework supports pluggable drivers through the `ipam_driver` configuration:
+
+| Driver | Type | Description |
+|---|---|---|
+| **internal** | Built-in | Native IPAM — manages all allocation within the Xloud database. Default driver. |
+| **Infoblox** | External | Enterprise DDI integration — delegates IP allocation to Infoblox NIOS |
+| **BlueCat** | External | BlueCat Address Manager integration for enterprise IPAM |
+| **SolarWinds** | External | SolarWinds IP Address Manager integration |
+| **Custom** | External | Any provider implementing the IPAM driver interface |
+
+<Info>
+  The built-in (internal) driver is used by default and requires no additional configuration. External drivers delegate allocation decisions to the third-party IPAM system while maintaining synchronization with the Xloud Network service.
+</Info>
+
+### Address Allocation Hierarchy
+
+```
+Address Scope (routing domain — prevents overlap)
+    └── Subnet Pool (managed prefix pool — enforces quota)
+            └── Subnet (IP block — allocation range)
+                    └── Port (VM attachment — receives IP)
+```
+
+| Level | Purpose | Example |
+|---|---|---|
+| **Address Scope** | Defines where addresses can route without NAT | `corporate-scope` → all RFC 1918 space |
+| **Subnet Pool** | Pool of prefixes for automated subnet creation | `10.0.0.0/16` with `/24` default allocation |
+| **Subnet** | Individual IP block allocated from pool | `10.0.1.0/24` |
+| **Port** | Single IP assignment to a VM | `10.0.1.15` assigned to `web-01` |
+
+---
+
+## Prerequisites
+
+- Xloud Network service (Neutron) deployed with ML2 plugin
+- DHCP agent running on network nodes
+- At least one network and subnet configured
+- For external IPAM: third-party IPAM system accessible from the Network service
+- For subnet pools: `subnet_allocation` extension enabled
+- Administrative access for shared pools, address scopes, and IPAM driver configuration
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+
+### Subnet & IP Pool Management
+
+    <Steps>
+      <Step title="Create a Network">
+Navigate to **Project** → **Network** → **Networks** → Click **Create Network**.
+
+- **Name** — Network name
+- **Admin State** — Enabled
+- Click **Next**
+      </Step>
+
+      <Step title="Create a Subnet">
+In the subnet configuration step:
+
+- **Subnet Name** — Descriptive name (e.g., `prod-subnet-v4`)
+- **Network Address** — CIDR notation (e.g., `10.0.1.0/24`)
+- **IP Version** — IPv4 or IPv6
+- **Gateway IP** — Subnet gateway (e.g., `10.0.1.1`)
+- **Enable DHCP** — Enabled (required for automatic IP allocation)
+      </Step>
+
+      <Step title="Configure Allocation Pool (Optional)">
+On the **Subnet Detail** step:
+
+- **Allocation Pools** — Restrict DHCP range (e.g., `10.0.1.10,10.0.1.250`)
+- **DNS Name Servers** — DNS servers for the subnet
+- **Host Routes** — Static routes injected via DHCP
+
+        <Tip>
+Reserve addresses outside the allocation pool for gateways, load balancers, and infrastructure services by setting the pool start above the reserved range.
+        </Tip>
+      </Step>
+
+      <Step title="Create Subnet Pool (Admin)">
+Navigate to **Admin** → **Network** → **Subnet Pools** → Click **Create Subnet Pool**.
+
+- **Name** — Pool name
+- **Prefixes** — Address prefixes (e.g., `10.0.0.0/16`)
+- **Default Prefix Length** — Default subnet size (e.g., `24` for /24)
+- **Minimum Prefix Length** — Smallest allowed subnet
+- **Maximum Prefix Length** — Largest allowed subnet
+- **Shared** — Enable for cross-project usage
+- **Default Pool** — Mark as default for automatic subnet allocation
+      </Step>
+
+      <Step title="Launch VM with Automatic IP">
+Navigate to **Project** → **Compute** → **Instances** → **Launch Instance**.
+
+Select a network with DHCP-enabled subnet. The VM automatically receives an IP address from the subnet's allocation pool upon boot.
+      </Step>
+    </Steps>
+
+    <Note>
+IPAM driver configuration is not available through the GUI. Use **Xdeploy** or CLI to configure external IPAM drivers on the Network service nodes.
+    </Note>
+  </Tab>
+
+  <Tab title="CLI">
+
+### IPAM Driver Configuration
+
+    <Steps>
+      <Step title="Configure IPAM Driver">
+Edit the Network service configuration:
+```bash
+vi /etc/neutron/neutron.conf
+```
+
+        <CodeGroup>
+```ini Built-in IPAM (Default)
+[DEFAULT]
+# Internal driver is used by default — no config needed
+# Explicit setting:
+ipam_driver = internal
+```
+
+```ini Infoblox IPAM
+[DEFAULT]
+ipam_driver = infoblox
+
+[infoblox]
+grid_master_host = infoblox.xloud.local
+grid_master_name = xloud-grid
+admin_user_name = xloud-api
+admin_password = <infoblox-password>
+wapi_version = 2.5
+ssl_verify = true
+default_network_view = default
+cloud_data_center_id = 1
+```
+
+```ini BlueCat IPAM
+[DEFAULT]
+ipam_driver = bluecat
+
+[bluecat]
+bam_address = bluecat.xloud.local
+bam_api_user = xloud-api
+bam_api_pass = <bluecat-password>
+bam_config_name = xloud-config
+```
+
+```ini Custom IPAM Driver
+[DEFAULT]
+# Any driver registered in the neutron.ipam_drivers namespace
+ipam_driver = <driver-name>
+```
+        </CodeGroup>
+
+Restart the Network service:
+```bash
+systemctl restart neutron-server
+```
+      </Step>
+    </Steps>
+
+### Address Scope Configuration
+
+    <Steps>
+      <Step title="Create Address Scope">
+Address scopes define routing domains where addresses are unique and routable without NAT:
+
+```bash
+# Create shared IPv4 address scope
+xloud address scope create --share --ip-version 4 corporate-v4
+
+# Create shared IPv6 address scope
+xloud address scope create --share --ip-version 6 corporate-v6
+```
+      </Step>
+
+      <Step title="Verify Address Scope">
+```bash
+xloud address scope list
+```
+      </Step>
+    </Steps>
+
+### Subnet Pool Configuration
+
+    <Steps>
+      <Step title="Create Shared Subnet Pool">
+```bash
+xloud subnet pool create \
+  --share \
+  --pool-prefix 10.0.0.0/16 \
+  --default-prefix-length 24 \
+  --min-prefix-length 24 \
+  --max-prefix-length 28 \
+  --address-scope corporate-v4 \
+  prod-pool-v4
+```
+Creates a shared pool with `/16` of address space, allocating `/24` subnets by default.
+      </Step>
+
+      <Step title="Create IPv6 Subnet Pool">
+```bash
+xloud subnet pool create \
+  --share \
+  --pool-prefix 2001:db8::/48 \
+  --default-prefix-length 64 \
+  --address-scope corporate-v6 \
+  prod-pool-v6
+```
+      </Step>
+
+      <Step title="Set Default Pool">
+Mark a pool as the default for automatic subnet allocation:
+```bash
+xloud subnet pool set --default prod-pool-v4
+```
+Only one pool per address family (IPv4/IPv6) can be the default.
+      </Step>
+
+      <Step title="Expand Pool Prefixes">
+Add more address space to an existing pool:
+```bash
+xloud subnet pool set --pool-prefix 10.1.0.0/16 prod-pool-v4
+```
+      </Step>
+
+      <Step title="Set Quota per Project">
+Limit how many addresses a project can allocate from the pool:
+```bash
+# IPv4: quota in number of addresses
+xloud subnet pool set --default-quota 256 prod-pool-v4
+
+# IPv6: quota in number of /64 blocks
+xloud subnet pool set --default-quota 4 prod-pool-v6
+```
+      </Step>
+    </Steps>
+
+### Subnet & Network Configuration
+
+    <Steps>
+      <Step title="Create Network">
+```bash
+xloud network create prod-network
+```
+      </Step>
+
+      <Step title="Create Subnet from Pool (Automatic Allocation)">
+Allocate a subnet automatically from the pool:
+```bash
+xloud subnet create \
+  --subnet-pool prod-pool-v4 \
+  --network prod-network \
+  --dhcp \
+  prod-subnet
+```
+The IPAM engine selects the next available `/24` from the pool.
+
+Using the default pool:
+```bash
+xloud subnet create \
+  --use-default-subnet-pool \
+  --network prod-network \
+  --dhcp \
+  auto-subnet
+```
+      </Step>
+
+      <Step title="Create Subnet with Specific Range">
+Request a specific prefix from the pool:
+```bash
+xloud subnet create \
+  --subnet-pool prod-pool-v4 \
+  --subnet-range 10.0.5.0/24 \
+  --network prod-network \
+  --dhcp \
+  specific-subnet
+```
+      </Step>
+
+      <Step title="Configure Allocation Pool (Restrict DHCP Range)">
+Limit which addresses are available for VM allocation:
+```bash
+xloud subnet create \
+  --subnet-pool prod-pool-v4 \
+  --network prod-network \
+  --allocation-pool start=10.0.1.10,end=10.0.1.250 \
+  --dns-nameserver 8.8.8.8 \
+  --dhcp \
+  restricted-subnet
+```
+Addresses 10.0.1.1–10.0.1.9 and 10.0.1.251–10.0.1.254 are reserved.
+      </Step>
+    </Steps>
+
+### VM Provisioning with Automatic IP
+
+    <Steps>
+      <Step title="Create VM (Automatic IP Allocation)">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --network prod-network \
+  web-01
+```
+The IPAM driver automatically:
+1. Selects the next available IP from the subnet
+2. Reserves it on the port
+3. DHCP agent delivers the IP to the VM
+      </Step>
+
+      <Step title="Create VM with Specific IP">
+Request a specific IP address:
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --nic net-id=<network-id>,v4-fixed-ip=10.0.1.100 \
+  db-primary
+```
+      </Step>
+
+      <Step title="Create Port with Reserved IP (Pre-Allocation)">
+Reserve an IP before creating the VM:
+```bash
+# Reserve IP on a port
+xloud port create \
+  --network prod-network \
+  --fixed-ip subnet=prod-subnet,ip-address=10.0.1.200 \
+  reserved-port
+
+# Create VM using the pre-allocated port
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --port reserved-port \
+  planned-server
+```
+
+        <Tip>
+Pre-allocating ports is useful for services that require known IP addresses (databases, load balancers, DNS servers).
+        </Tip>
+      </Step>
+
+      <Step title="Assign Multiple IPs to a VM">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --nic net-id=<net-a-id> \
+  --nic net-id=<net-b-id> \
+  multi-nic-vm
+```
+Each NIC receives an IP from its respective subnet.
+      </Step>
+
+      <Step title="Allocate Floating IP">
+Assign an externally routable IP:
+```bash
+# Allocate from external network
+xloud floating ip create external-net
+
+# Associate with VM
+xloud server add floating ip web-01 <floating-ip>
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## IP Allocation Methods
+
+| Method | Description | Use Case |
+|---|---|---|
+| **Automatic** | IPAM selects next available IP from subnet | Standard VM provisioning |
+| **Specific IP** | User requests a particular IP address | Services requiring fixed addresses |
+| **Pre-allocated Port** | IP reserved on a port before VM creation | Planned infrastructure, HA pairs |
+| **Subnet Pool** | Subnet auto-allocated from managed pool | Multi-project environments |
+| **Default Pool** | Uses the default subnet pool for the address family | Simplified provisioning |
+| **Floating IP** | External IP mapped to internal fixed IP via NAT | Public-facing services |
+
+---
+
+## Subnet Pool Quota System
+
+Subnet pools enforce address-space quotas per project:
+
+### IPv4 Quotas
+
+Measured in **number of addresses**:
+
+| Quota | Example Allocation |
+|---|---|
+| 256 addresses | One /24 subnet |
+| 128 addresses | One /25 or two /26 subnets |
+| 64 addresses | One /26 subnet |
+
+### IPv6 Quotas
+
+Measured in **number of /64 blocks**:
+
+| Quota | Example Allocation |
+|---|---|
+| 4 blocks | Four /64 subnets |
+| 1 block | One /64 subnet |
+
+<Info>
+  IPv6 quotas use /64 block counting instead of individual addresses to avoid impractically large numbers.
+</Info>
+
+---
+
+## Address Scope Routing Behavior
+
+| Scenario | Routing Behavior |
+|---|---|
+| Source and destination in **same** address scope | Direct routing — **no NAT** |
+| Source and destination in **different** address scopes | NAT applied or traffic blocked |
+| No address scope assigned | Standard NAT-based routing |
+
+<Tip>
+  Use address scopes to enable NAT-free routing between project networks and external networks that share the same address space. This is especially valuable for IPv6 deployments where floating IPs are not available.
+</Tip>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify IPAM Driver">
+```bash
+grep ipam_driver /etc/neutron/neutron.conf
+```
+Default output: `ipam_driver = internal` (or no entry, which defaults to internal).
+  </Step>
+
+  <Step title="Verify Subnet Pool">
+```bash
+xloud subnet pool list
+xloud subnet pool show prod-pool-v4
+```
+Confirm prefixes, default prefix length, and quota settings.
+  </Step>
+
+  <Step title="Verify Address Scope">
+```bash
+xloud address scope list
+```
+  </Step>
+
+  <Step title="Verify Subnet Allocation from Pool">
+```bash
+xloud subnet show prod-subnet -c cidr -c subnetpool_id -c allocation_pools
+```
+Confirm the subnet was allocated from the expected pool.
+  </Step>
+
+  <Step title="Verify VM IP Allocation">
+After creating a VM:
+```bash
+xloud server show web-01 -c addresses
+```
+Confirm the VM received an IP from the expected subnet range.
+
+Check the port details:
+```bash
+xloud port list --server <server-id>
+xloud port show <port-id> -c fixed_ips -c mac_address
+```
+  </Step>
+
+  <Step title="Verify DHCP Agent">
+```bash
+xloud network agent list --agent-type dhcp
+```
+Confirm DHCP agents are `Alive` and `Active` on the network nodes.
+
+Verify the lease:
+```bash
+# On the network node
+cat /var/lib/neutron/dhcp/<network-id>/host
+```
+  </Step>
+
+  <Step title="Verify No Address Overlap">
+List all ports on a subnet to confirm unique allocation:
+```bash
+xloud port list --fixed-ip subnet=<subnet-id>
+```
+No duplicate IP addresses should appear.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Subnet Pools" icon="cubes-stacked">
+Always use subnet pools for multi-project deployments. Pools prevent address overlap and enable automated subnet allocation without manual CIDR tracking.
+  </Card>
+  <Card title="Define Address Scopes" icon="sitemap">
+Create address scopes for networks that require direct routing. This eliminates unnecessary NAT and simplifies network topology.
+  </Card>
+  <Card title="Reserve Infrastructure IPs" icon="bookmark">
+Set allocation pools to exclude addresses reserved for gateways, load balancers, and monitoring systems. Example: start allocation at `.10` to reserve `.1`–`.9`.
+  </Card>
+  <Card title="Set Pool Quotas" icon="gauge">
+Configure per-project quotas on shared subnet pools to prevent a single project from exhausting the address space.
+  </Card>
+  <Card title="Pre-Allocate Critical IPs" icon="thumbtack">
+For services requiring known IP addresses (databases, DNS, HA pairs), create ports with fixed IPs before VM provisioning.
+  </Card>
+  <Card title="Monitor Pool Utilization" icon="chart-pie">
+Regularly check subnet pool utilization. Expand pool prefixes proactively before address exhaustion causes provisioning failures.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="VM Does Not Receive IP Address">
+  **Symptom:** VM boots but has no IP address — `xloud server show` shows empty addresses.
+
+  **Resolution:**
+  1. Verify DHCP is enabled on the subnet:
+```bash
+xloud subnet show <subnet> -c enable_dhcp
+```
+  2. Verify the DHCP agent is running:
+```bash
+xloud network agent list --agent-type dhcp
+```
+  3. Check that the subnet has available addresses in the allocation pool:
+```bash
+xloud port list --fixed-ip subnet=<subnet-id> | wc -l
+```
+  4. Verify the VM's port was created:
+```bash
+xloud port list --server <server-id>
+```
+  5. Check DHCP agent logs: `journalctl -u neutron-dhcp-agent`
+</Accordion>
+
+<Accordion title="IP Address Exhaustion">
+  **Symptom:** VM creation fails with `No more IP addresses available on network`.
+
+  **Resolution:**
+  1. Check allocation pool utilization:
+```bash
+xloud port list --fixed-ip subnet=<subnet-id> --long
+```
+  2. Identify and remove unused ports (e.g., from deleted VMs):
+```bash
+xloud port list --status DOWN --network <network-id>
+xloud port delete <unused-port-id>
+```
+  3. Expand the allocation pool:
+```bash
+xloud subnet set <subnet> --allocation-pool start=10.0.1.2,end=10.0.1.254
+```
+  4. Create a new subnet from the pool:
+```bash
+xloud subnet create --subnet-pool prod-pool-v4 --network <network> new-subnet
+```
+</Accordion>
+
+<Accordion title="Subnet Pool Quota Exceeded">
+  **Symptom:** Subnet creation fails with quota error.
+
+  **Resolution:**
+  1. Check current pool utilization:
+```bash
+xloud subnet pool show <pool-id>
+```
+  2. Review allocated subnets:
+```bash
+xloud subnet list --subnet-pool <pool-id>
+```
+  3. Delete unused subnets to free quota
+  4. Request quota increase from admin:
+```bash
+xloud subnet pool set --default-quota 512 <pool-id>
+```
+</Accordion>
+
+<Accordion title="Overlapping Addresses Across Projects">
+  **Symptom:** Two projects have subnets with the same CIDR, causing routing conflicts.
+
+  **Resolution:**
+  1. Use shared subnet pools to prevent future overlap:
+```bash
+xloud subnet pool create --share --pool-prefix 10.0.0.0/16 \
+  --default-prefix-length 24 shared-pool
+```
+  2. Create address scopes for routing domains:
+```bash
+xloud address scope create --share --ip-version 4 corporate-scope
+xloud subnet pool set --address-scope corporate-scope shared-pool
+```
+  3. Migrate existing subnets to the shared pool for new allocations
+</Accordion>
+
+<Accordion title="External IPAM Driver Connection Fails">
+  **Symptom:** Network service fails to start or IP allocation errors in logs after configuring external IPAM.
+
+  **Resolution:**
+  1. Verify the IPAM driver is installed:
+```bash
+pip list | grep <driver-package>
+```
+  2. Verify connectivity to the external IPAM system
+  3. Check credentials in `neutron.conf`
+  4. Review Network service logs: `journalctl -u neutron-server --grep ipam`
+  5. Fall back to internal driver if needed: `ipam_driver = internal`
+  6. Restart: `systemctl restart neutron-server`
+</Accordion>
+
+<Accordion title="Floating IP Allocation Fails">
+  **Symptom:** `No floating IP addresses available` when trying to allocate.
+
+  **Resolution:**
+  1. Check the external network's floating IP pool:
+```bash
+xloud floating ip list
+xloud subnet show <external-subnet> -c allocation_pools
+```
+  2. Release unused floating IPs:
+```bash
+xloud floating ip list --status DOWN
+xloud floating ip delete <unused-fip-id>
+```
+  3. Expand the external subnet allocation pool if needed
+  4. Verify project quota allows additional floating IPs:
+```bash
+xloud quota show <project-id> -c floatingip
+```
+</Accordion>

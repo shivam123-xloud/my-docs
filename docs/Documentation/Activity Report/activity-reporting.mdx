@@ -1,0 +1,439 @@
+---
+title: "Activity Reporting"
+description: "Xloud Compute hypervisor management engine provides activity reports for provisioning tasks, user-related tasks, resource usage, and audit logs."
+---
+
+## Overview
+
+The Xloud Compute management engine provides comprehensive activity reporting across the entire virtualized environment. Every operation — from VM provisioning and lifecycle actions to user-initiated tasks and resource usage — is tracked and auditable.
+
+<CardGroup cols={2}>
+  <Card title="Provisioning Tasks" icon="list-check">
+Track all VM lifecycle events — create, delete, resize, migrate, reboot, and every state transition.
+  </Card>
+  <Card title="User Activity" icon="user-clock">
+Identify who performed each action, when, and on which resource — with full request traceability.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture / Concepts
+
+### Activity Data Sources
+
+Xloud Compute captures activity data through multiple reporting layers:
+
+| Report Type | Description | Scope |
+|---|---|---|
+| **Instance Actions** | Per-VM action history with event-level details | Per instance |
+| **Instance Action Events** | Granular sub-events within each action (e.g., scheduler, compute steps) | Per action |
+| **Tenant Usage** | Resource consumption metrics per project (vCPU-hours, RAM-hours, disk-hours) | Per project |
+| **Usage Audit Log** | System-wide audit of instance usage for billing and compliance | All projects |
+| **Server Diagnostics** | Real-time resource utilization for a running VM | Per instance |
+| **Operation Log** | Dashboard-level audit trail of all user HTTP operations | System-wide |
+
+### Instance Action Record Structure
+
+Each action record captures:
+
+| Field | Description |
+|---|---|
+| `action` | Operation type (e.g., `create`, `stop`, `reboot`, `resize`, `live-migration`) |
+| `request_id` | Unique identifier for end-to-end request tracing |
+| `user_id` | User who initiated the action |
+| `project_id` | Project context |
+| `start_time` | When the action was initiated |
+| `message` | Status message or error details |
+| `instance_uuid` | Target VM identifier |
+| `updated_at` | Last update timestamp |
+
+### Action Events (Sub-Events)
+
+Each action contains one or more events representing internal processing steps:
+
+| Field | Description | Microversion |
+|---|---|---|
+| `event` | Event name (e.g., `compute_create`, `scheduler_select_destinations`) | 2.0+ |
+| `start_time` / `finish_time` | Event duration | 2.0+ |
+| `result` | Success or error | 2.0+ |
+| `host` | Compute host that processed the event | 2.62+ |
+| `hostId` | Hashed host identifier (non-admin) | 2.62+ |
+| `details` | Error traceback / detailed information | 2.84+ |
+
+<Info>
+Event-level details (including host and traceback) require specific API microversions. The base action list is available to all project members.
+</Info>
+
+### Supported Action Types
+
+The following provisioning and management actions are captured:
+
+| Category | Actions |
+|---|---|
+| **Provisioning** | `create`, `delete`, `rebuild`, `restore`, `forceDelete` |
+| **Power** | `start`, `stop`, `reboot`, `pause`, `unpause`, `suspend`, `resume` |
+| **Resize** | `resize`, `confirmResize`, `revertResize` |
+| **Migration** | `migrate`, `live-migration`, `evacuate` |
+| **State** | `shelve`, `unshelve`, `shelveOffload`, `lock`, `unlock`, `rescue`, `unrescue` |
+| **Storage** | `attach_volume`, `detach_volume`, `swap_volume` |
+| **Network** | `attach_interface`, `detach_interface`, `addFloatingIp`, `removeFloatingIp` |
+| **Security** | `addSecurityGroup`, `removeSecurityGroup`, `changePassword` |
+| **Image** | `createImage`, `createBackup` |
+| **Admin** | `resetState`, `injectNetworkInfo`, `trigger_crash_dump` |
+
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed and operational
+- User with `reader`, `member`, or `admin` role (access varies by report type)
+- For tenant usage reports: Xloud Compute configured with usage tracking enabled
+- For operation logs: Dashboard `OPERATION_LOG_ENABLED = True`
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+
+### View Instance Activity
+
+    <Steps>
+      <Step title="Navigate to Instance Actions">
+Go to **Project** → **Compute** → **Instances** → Click an instance name → Select the **Action Log** tab.
+
+The action log displays a chronological list of all operations performed on the instance:
+
+- Action type
+- Initiated by (user)
+- Start time
+- Status message
+- Request ID
+      </Step>
+
+      <Step title="View Project Usage Report">
+Navigate to **Project** → **Compute** → **Overview**.
+
+The overview panel shows:
+
+- Resource usage summary (vCPUs, RAM, disk, instances)
+- Usage chart over the selected date range
+- Per-instance usage breakdown
+
+Adjust the **date range** to view historical activity.
+      </Step>
+
+      <Step title="View Admin Usage Report (All Projects)">
+Navigate to **Admin** → **Compute** → **Overview**.
+
+Displays system-wide usage across all projects:
+
+- Aggregate resource consumption
+- Per-project usage breakdown
+- Date range filter for historical reporting
+      </Step>
+    </Steps>
+
+    <Note>
+Admin-level activity reports (all projects, usage audit logs) require the `admin` role. Project members can only view activity for their own instances.
+    </Note>
+  </Tab>
+
+  <Tab title="CLI">
+
+### Instance Action Reports
+
+    <Steps>
+      <Step title="List All Actions for a VM">
+```bash
+xloud server event list <server-id>
+```
+
+Returns all actions performed on the instance:
+```
++------------------+----------+----------------------------+-------------+
+| Action           | User ID  | Start Time                 | Message     |
++------------------+----------+----------------------------+-------------+
+| create           | user-123 | 2026-03-17T08:30:00.000000 | -           |
+| stop             | user-123 | 2026-03-17T10:15:00.000000 | -           |
+| start            | user-456 | 2026-03-17T10:45:00.000000 | -           |
+| resize           | user-123 | 2026-03-17T14:00:00.000000 | -           |
+| confirmResize    | user-123 | 2026-03-17T14:05:00.000000 | -           |
++------------------+----------+----------------------------+-------------+
+```
+      </Step>
+
+      <Step title="Show Action Details with Events">
+```bash
+xloud server event show <server-id> <request-id>
+```
+
+Returns the action with sub-event details:
+```
+Action: create
+Request ID: req-abc-123
+User ID: user-123
+Start Time: 2026-03-17T08:30:00.000000
+Events:
+  - compute_build_and_run_instance (Success)
+  - scheduler_select_destinations (Success)
+  - compute_create (Success)
+```
+      </Step>
+
+      <Step title="List Actions with Changes-Since Filter">
+Use the API directly for advanced filtering:
+```bash
+xloud server event list <server-id> --changes-since 2026-03-15T00:00:00
+```
+
+Or via API:
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/servers/<server-id>/os-instance-actions?changes-since=2026-03-15T00:00:00" \
+  | python3 -m json.tool
+```
+      </Step>
+    </Steps>
+
+### Tenant Usage Reports
+
+    <Steps>
+      <Step title="Show Project Usage">
+```bash
+xloud usage show --project <project-id> \
+  --start 2026-03-01 --end 2026-03-17
+```
+
+Returns:
+
+- Total vCPU-hours consumed
+- Total RAM-hours (MB-hours)
+- Total disk-hours (GB-hours)
+- Per-instance usage breakdown
+      </Step>
+
+      <Step title="List All Project Usage (Admin)">
+```bash
+xloud usage list --start 2026-03-01 --end 2026-03-17
+```
+
+Returns usage metrics for every project in the deployment.
+      </Step>
+    </Steps>
+
+### Usage Audit Log
+
+    <Steps>
+      <Step title="List All Usage Audits (Admin)">
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/os-instance_usage_audit_log" \
+  | python3 -m json.tool
+```
+
+Returns system-wide audit entries for compliance and billing.
+      </Step>
+
+      <Step title="List Audits Before Timestamp">
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/os-instance_usage_audit_log/2026-03-17T00:00:00" \
+  | python3 -m json.tool
+```
+      </Step>
+    </Steps>
+
+### Server Diagnostics (Admin)
+
+    <Steps>
+      <Step title="View Real-Time VM Diagnostics">
+```bash
+xloud server diagnostics show <server-id>
+```
+
+Returns current resource utilization:
+
+- CPU usage
+- Memory usage
+- Disk I/O (read/write bytes and operations)
+- Network I/O (rx/tx bytes and packets)
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## API Reference
+
+### Instance Actions
+
+| Operation | Method | Endpoint | Default Role | Description |
+|---|---|---|---|---|
+| List actions | `GET` | `/servers/{id}/os-instance-actions` | `project_reader_or_admin` | List all actions for a VM |
+| Show action | `GET` | `/servers/{id}/os-instance-actions/{request_id}` | `project_reader_or_admin` | Show action with events |
+
+**Query parameters:**
+
+| Parameter | Description |
+|---|---|
+| `changes-since` | Filter actions modified after this timestamp |
+| `changes-before` | Filter actions modified before this timestamp |
+| `limit` | Maximum number of results |
+| `marker` | Pagination marker |
+
+**Microversion-specific features:**
+
+| Microversion | Feature |
+|---|---|
+| 2.51+ | Event details (event name, result, start/finish time) visible to admins |
+| 2.58+ | `changes-since` and `changes-before` filter parameters |
+| 2.62+ | Host name visible in events (admin only) |
+| 2.66+ | Pagination support (`limit`, `marker`) |
+| 2.84+ | Event `details` field with error traceback (admin only) |
+
+### Instance Action Events (Admin Access)
+
+| Operation | Method | Endpoint | Default Role | Description |
+|---|---|---|---|---|
+| Show events | `GET` | `/servers/{id}/os-instance-actions/{request_id}` | `context_is_admin` | Include event sub-details |
+| Show event details | `GET` | `/servers/{id}/os-instance-actions/{request_id}` | `context_is_admin` | Include error traceback (2.84+) |
+
+### Tenant Usage
+
+| Operation | Method | Endpoint | Default Role | Description |
+|---|---|---|---|---|
+| Show project usage | `GET` | `/os-simple-tenant-usage/{tenant_id}` | `project_reader_or_admin` | Usage for a specific project |
+| List all usage | `GET` | `/os-simple-tenant-usage` | `context_is_admin` | Usage across all projects |
+
+**Query parameters:**
+
+| Parameter | Description |
+|---|---|
+| `start` | Start date for usage period |
+| `end` | End date for usage period |
+| `detailed` | Include per-instance breakdown |
+
+### Usage Audit Log (Admin)
+
+| Operation | Method | Endpoint | Default Role | Description |
+|---|---|---|---|---|
+| List all audits | `GET` | `/os-instance_usage_audit_log` | `context_is_admin` | System-wide audit entries |
+| List before timestamp | `GET` | `/os-instance_usage_audit_log/{before_timestamp}` | `context_is_admin` | Audits before specified time |
+
+### Server Diagnostics (Admin)
+
+| Operation | Method | Endpoint | Default Role | Description |
+|---|---|---|---|---|
+| Show diagnostics | `GET` | `/servers/{id}/diagnostics` | `context_is_admin` | Real-time resource metrics |
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify Action Logging">
+Create a test instance and verify the action is recorded:
+```bash
+xloud server create --flavor m1.small --image cirros \
+  --network my-net activity-test
+
+xloud server event list activity-test
+```
+Confirm `create` action appears with correct user and timestamp.
+  </Step>
+
+  <Step title="Verify Usage Reporting">
+```bash
+xloud usage show --project <project-id> \
+  --start 2026-03-01 --end 2026-03-17
+```
+Confirm vCPU-hours, RAM-hours, and per-instance data appear.
+  </Step>
+
+  <Step title="Verify Admin Reports">
+```bash
+# All project usage
+xloud usage list --start 2026-03-01 --end 2026-03-17
+
+# Server diagnostics
+xloud server diagnostics show activity-test
+```
+Confirm data is returned for admin users and denied for non-admin users.
+  </Step>
+
+  <Step title="Cleanup">
+```bash
+xloud server delete activity-test
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Enable Dashboard Operation Logs" icon="scroll">
+Set `OPERATION_LOG_ENABLED = True` in the Dashboard configuration for a complete audit trail of all GUI-based user actions.
+  </Card>
+  <Card title="Schedule Usage Reports" icon="calendar">
+Automate tenant usage report generation for billing cycles. Use `xloud usage list` with date range parameters in scheduled jobs.
+  </Card>
+  <Card title="Monitor Failed Actions" icon="triangle-exclamation">
+Regularly query for instances in `ERROR` state and review their action events to identify recurring provisioning failures.
+  </Card>
+  <Card title="Leverage Microversion 2.84" icon="microscope">
+Use API microversion 2.84+ for admin troubleshooting — it exposes error tracebacks in action events, enabling root cause analysis without log access.
+  </Card>
+  <Card title="Retain Audit Data" icon="database">
+Configure database archival policies for instance action records. These records are critical for compliance audits and incident investigations.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Action Log Shows No Events">
+**Symptom:** `xloud server event list` returns an empty list.
+
+**Resolution:**
+1. Verify the instance exists: `xloud server show <server-id>`
+2. Confirm the user has at least `reader` role on the project
+3. Check if the instance was recently created — actions may take a moment to persist
+4. For deleted instances, action history is no longer accessible via the API
+</Accordion>
+
+<Accordion title="Event Details Not Visible">
+**Symptom:** Actions are listed but event sub-details are empty.
+
+**Resolution:**
+1. Event details require `admin` role by default
+2. Use API microversion 2.51+ for basic event details:
+```bash
+curl -H "X-Auth-Token: $TOKEN" -H "X-OpenStack-Nova-API-Version: 2.84" \
+  "$COMPUTE_URL/servers/<server-id>/os-instance-actions/<req-id>"
+```
+3. To grant event visibility to non-admin users, override the policy:
+```yaml
+"os_compute_api:os-instance-actions:events": "rule:project_reader_or_admin"
+```
+</Accordion>
+
+<Accordion title="Usage Report Returns Zero">
+**Symptom:** `xloud usage show` returns zero usage despite active instances.
+
+**Resolution:**
+1. Verify the date range covers the instance's active period:
+```bash
+xloud usage show --project <project-id> \
+  --start 2026-03-01 --end 2026-03-17
+```
+2. Check that `start` is before instance creation and `end` is after
+3. Verify the Compute service is tracking usage (check `nova-compute` logs)
+4. For very recent instances, allow a few minutes for usage data to propagate
+</Accordion>

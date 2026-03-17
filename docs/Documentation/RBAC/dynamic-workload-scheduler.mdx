@@ -1,0 +1,363 @@
+---
+title: "Dynamic Workload Scheduler & VM Host Pinning"
+description: "RBAC policy configuration for VM placement, host pinning, CPU/NUMA pinning, and scheduler operations in Xloud Compute."
+---
+
+## Overview
+
+The Xloud Compute scheduler controls where virtual machines are placed across your infrastructure. This guide covers RBAC configuration for VM placement, host pinning, CPU/NUMA pinning, and scheduler operations — enabling fine-grained control over who can direct workloads to specific hosts.
+
+<Warning>
+JSON-formatted policy files are **deprecated**. Use YAML format exclusively. To convert:
+```bash
+oslopolicy-convert-json-to-yaml --namespace nova --policy-file policy.json --output-file policy.yaml
+```
+</Warning>
+
+---
+
+## Architecture / Concepts
+
+### RBAC Model
+
+The policy engine evaluates three factors for every API request:
+
+| Factor | Description |
+|---|---|
+| **Role** | User's assigned role — `admin`, `manager`, `member`, or `reader` |
+| **Scope** | Project context of the request |
+| **Target** | Resource-level attributes such as `project_id` or `user_id` |
+
+### Role Hierarchy
+
+| Role | Access Level | Typical Use |
+|---|---|---|
+| `admin` | Full access — host-level, cross-project, service management | Infrastructure operators |
+| `manager` | Member access + migrations, force-complete, capacity operations | Team leads, DevOps |
+| `member` | Create, update, delete servers and resources within a project | Developers, automation scripts |
+| `reader` | Read-only — list and show operations only | Monitoring, reporting, auditors |
+
+### Base Policy Rules
+
+| Rule | Definition |
+|---|---|
+| `context_is_admin` | `role:admin` |
+| `project_member_or_admin` | `role:member and project_id:%(project_id)s` OR `role:admin` |
+| `project_manager_or_admin` | `role:manager and project_id:%(project_id)s` OR `role:admin` |
+| `project_reader_or_admin` | `role:reader and project_id:%(project_id)s` OR `role:admin` |
+| `service_or_admin` | `role:service` OR `role:admin` |
+
+<Info>
+All Compute policies use **project** scope. Authorization is always evaluated within the context of a specific project.
+</Info>
+
+### Scheduler Pipeline
+
+The Xloud scheduler evaluates placement through a multi-stage pipeline:
+
+1. **Filters** — Eliminate hosts that don't meet requirements (RAM, CPU, disk, AZ, aggregate metadata)
+2. **Weighers** — Rank remaining hosts by preference (capacity, spread/stack)
+3. **Placement API** — Validates resource provider inventory
+
+### Host Pinning Methods
+
+| Method | Policy Required | Behavior |
+|---|---|---|
+| **Forced Host** | `servers:create:forced_host` | Bypasses scheduler — places directly on specified host |
+| **Requested Destination** | `servers:create:requested_destination` | Host hint — scheduler validates before placement |
+| **Availability Zone + Host** | `servers:create` | Specify `az:host` in the AZ field |
+| **Live Migration to Host** | `os-migrate-server:migrate_live:host` | Migrate running VM to specific host |
+| **Cold Migration to Host** | `os-migrate-server:migrate:host` | Migrate stopped VM to specific host |
+| **Unshelve to Host** | `os-shelve:unshelve_to_host` | Restore shelved VM on specific host |
+
+<Warning>
+**Forced host** bypasses all scheduler filters and validation. Use **requested destination** instead — it validates resources before placement.
+</Warning>
+
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed and operational
+- Xloud Identity (Keystone) configured with roles and project assignments
+- Administrative access to `/etc/nova/policy.yaml` on Compute API nodes
+- YAML-format policy file
+- Understanding of availability zones, aggregates, and host groups
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Locate Scheduling Policies">
+Navigate to **Admin** → **Compute** → **Policy Configuration**. Filter by **Server Creation** and **Migration**.
+      </Step>
+      <Step title="Modify Policy Rules">
+Select each policy → **Edit** → Change the rule. Example: `compute:servers:create:requested_destination` from `rule:context_is_admin` to `rule:project_manager_or_admin`.
+      </Step>
+      <Step title="Configure CPU Pinning Flavors">
+Navigate to **Admin** → **Compute** → **Flavors** → Select flavor → **Extra Specs**:
+
+| Key | Value | Description |
+|---|---|---|
+| `hw:cpu_policy` | `dedicated` | Dedicated physical CPU cores |
+| `hw:numa_nodes` | `1` or `2` | NUMA node count |
+| `hw:mem_page_size` | `large` / `1GB` | Hugepage allocation |
+| `hw:cpu_thread_policy` | `isolate` / `prefer` | Thread handling |
+      </Step>
+      <Step title="Apply">
+Click **Apply Configuration**.
+      </Step>
+    </Steps>
+
+    <Note>
+If the GUI is not available, use **Xdeploy** to manage policies and flavor extra specs.
+    </Note>
+  </Tab>
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Configure Host Pinning Policies">
+```bash
+vi /etc/nova/policy.yaml
+```
+
+        <CodeGroup>
+```yaml Option A: Managers Can Pin (Recommended)
+"compute:servers:create:requested_destination": "rule:project_manager_or_admin"
+"os_compute_api:os-migrate-server:migrate_live:host": "rule:project_manager_or_admin"
+"os_compute_api:os-migrate-server:migrate:host": "rule:project_manager_or_admin"
+"os_compute_api:os-shelve:unshelve_to_host": "rule:project_manager_or_admin"
+```
+```yaml Option B: Members Can Pin (Less Restrictive)
+"compute:servers:create:requested_destination": "rule:project_member_or_admin"
+"os_compute_api:os-migrate-server:migrate_live:host": "rule:project_member_or_admin"
+"os_compute_api:os-migrate-server:migrate:host": "rule:project_member_or_admin"
+"os_compute_api:os-shelve:unshelve_to_host": "rule:project_member_or_admin"
+```
+```yaml Option C: Forced Host (Use with Caution)
+"os_compute_api:servers:create:forced_host": "rule:project_manager_or_admin"
+```
+        </CodeGroup>
+      </Step>
+      <Step title="Configure CPU Pinning Flavor">
+```bash
+xloud flavor create --vcpus 4 --ram 8192 --disk 80 pinned.4c8g
+xloud flavor set pinned.4c8g \
+  --property hw:cpu_policy=dedicated \
+  --property hw:numa_nodes=1 \
+  --property hw:mem_page_size=large \
+  --property hw:cpu_thread_policy=isolate
+```
+      </Step>
+      <Step title="Grant Hypervisor Visibility (Optional)">
+```yaml
+"os_compute_api:os-hypervisors:list": "rule:project_manager_or_admin"
+"os_compute_api:os-hypervisors:show": "rule:project_manager_or_admin"
+```
+        <Info>
+Granting hypervisor visibility exposes infrastructure topology. Only enable for trusted users.
+        </Info>
+      </Step>
+      <Step title="Configure Aggregates (Optional)">
+```bash
+xloud aggregate create --zone nova high-perf-hosts
+xloud aggregate add host high-perf-hosts compute-node-01
+xloud aggregate set --property high_perf=true high-perf-hosts
+xloud flavor set pinned.4c8g \
+  --property aggregate_instance_extra_specs:high_perf=true
+```
+      </Step>
+      <Step title="Validate and Apply">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+systemctl reload nova-api
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Policy Reference — Scheduling & Placement
+
+<Accordion title="VM Creation & Host Pinning">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:servers:create` | `project_member_or_admin` | Create VM (scheduler selects host) | `POST /servers` |
+| `os_compute_api:servers:create:forced_host` | `context_is_admin` | Create on specified host (bypasses scheduler) | `POST /servers` |
+| `compute:servers:create:requested_destination` | `context_is_admin` | Create with host hint (scheduler validates) | `POST /servers` |
+| `os_compute_api:servers:create:zero_disk_flavor` | `context_is_admin` | Create with zero-disk flavor | `POST /servers` |
+
+</Accordion>
+
+<Accordion title="Migration to Specific Host">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-migrate-server:migrate` | `project_manager_or_admin` | Cold migrate (scheduler selects) | `POST /servers/{id}/action` |
+| `os_compute_api:os-migrate-server:migrate:host` | `context_is_admin` | Cold migrate to specific host | `POST /servers/{id}/action` |
+| `os_compute_api:os-migrate-server:migrate_live` | `project_manager_or_admin` | Live migrate (scheduler selects) | `POST /servers/{id}/action` |
+| `os_compute_api:os-migrate-server:migrate_live:host` | `context_is_admin` | Live migrate to specific host | `POST /servers/{id}/action` |
+| `compute:servers:resize:cross_cell` | `!` (disabled) | Cross-cell resize | `POST /servers/{id}/action` |
+
+</Accordion>
+
+<Accordion title="Shelve, Unshelve & Host Targeting">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-shelve:shelve` | `project_member_or_admin` | Shelve VM | `POST /servers/{id}/action` |
+| `os_compute_api:os-shelve:unshelve` | `project_member_or_admin` | Unshelve (scheduler selects) | `POST /servers/{id}/action` |
+| `os_compute_api:os-shelve:unshelve_to_host` | `context_is_admin` | Unshelve to specific host | `POST /servers/{id}/action` |
+| `os_compute_api:os-shelve:shelve_offload` | `context_is_admin` | Shelve-offload | `POST /servers/{id}/action` |
+
+</Accordion>
+
+<Accordion title="Hypervisors, Aggregates & Topology">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-hypervisors:list` | `context_is_admin` | List hypervisors | `GET /os-hypervisors` |
+| `os_compute_api:os-hypervisors:show` | `context_is_admin` | Show hypervisor | `GET /os-hypervisors/{id}` |
+| `os_compute_api:os-hypervisors:statistics` | `context_is_admin` | Summary stats | `GET /os-hypervisors/statistics` |
+| `os_compute_api:os-aggregates:index` | `context_is_admin` | List aggregates | `GET /os-aggregates` |
+| `os_compute_api:os-aggregates:create` | `context_is_admin` | Create aggregate | `POST /os-aggregates` |
+| `os_compute_api:os-aggregates:add_host` | `context_is_admin` | Add host | `POST /os-aggregates/{id}/action` |
+| `os_compute_api:os-aggregates:set_metadata` | `context_is_admin` | Set metadata | `POST /os-aggregates/{id}/action` |
+| `os_compute_api:os-availability-zone:list` | `@` | List zones | `GET /os-availability-zone` |
+| `os_compute_api:os-availability-zone:detail` | `context_is_admin` | Zones with host details | `GET /os-availability-zone/detail` |
+| `compute:server:topology:index` | `project_reader_or_admin` | VM NUMA topology | `GET /servers/{id}/topology` |
+| `compute:server:topology:host:index` | `context_is_admin` | NUMA with host CPU pinning | `GET /servers/{id}/topology` |
+| `os_compute_api:os-extended-server-attributes` | `context_is_admin` | Extended attributes (host, instance_name) | `GET /servers/*` |
+
+</Accordion>
+
+<Accordion title="Flavor Extra Specs & Server Groups">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-flavor-extra-specs:index` | `project_reader_or_admin` | List extra specs | `GET /flavors/{id}/os-extra_specs/` |
+| `os_compute_api:os-flavor-extra-specs:create` | `context_is_admin` | Create extra specs | `POST /flavors/{id}/os-extra_specs/` |
+| `os_compute_api:os-flavor-extra-specs:update` | `context_is_admin` | Update extra spec | `PUT /flavors/{id}/os-extra_specs/{key}` |
+| `os_compute_api:os-flavor-extra-specs:delete` | `context_is_admin` | Delete extra spec | `DELETE /flavors/{id}/os-extra_specs/{key}` |
+| `os_compute_api:os-server-groups:create` | `project_member_or_admin` | Create server group | `POST /os-server-groups` |
+| `os_compute_api:os-server-groups:index` | `project_reader_or_admin` | List server groups | `GET /os-server-groups` |
+
+<Tip>
+Server groups with `affinity` place all members on the same host. Use `anti-affinity` to spread across hosts.
+</Tip>
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Validate Policy Syntax">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+```
+No output indicates valid syntax.
+  </Step>
+
+  <Step title="Simulate Policy Check">
+```bash
+oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml \
+  --rule "os_compute_api:servers:create" \
+  --target '{"project_id": "proj-123"}' \
+  --access '{"roles": ["member"], "project_id": "proj-123"}'
+```
+Returns `True` if authorized.
+  </Step>
+
+  <Step title="Verify Host Pinning">
+```bash
+xloud server show <server-id> -c OS-EXT-SRV-ATTR:host -c OS-EXT-SRV-ATTR:hypervisor_hostname
+```
+  </Step>
+
+  <Step title="Verify Denied Access">
+Authenticate as a `reader` role user:
+```bash
+xloud server create --flavor m1.small --image cirros --network my-net denied-vm
+```
+Expected: `403 Forbidden`
+  </Step>
+
+  <Step title="Identify Redundant Overrides">
+```bash
+oslopolicy-list-redundant --namespace nova --policy /etc/nova/policy.yaml
+```
+Remove rules that match defaults to keep the file minimal.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Prefer Requested Destination" icon="route">
+Use `requested_destination` over `forced_host`. The scheduler validates resources, preventing overcommit.
+  </Card>
+  <Card title="Use Aggregates for Targeting" icon="layer-group">
+Group hosts into aggregates with metadata and use flavor extra specs for matching — safer than direct host pinning.
+  </Card>
+  <Card title="Limit Hypervisor Visibility" icon="eye-slash">
+Only grant hypervisor list/show policies to trusted users. Exposing topology reveals infrastructure details.
+  </Card>
+  <Card title="Use Server Groups" icon="server">
+Use server groups with `affinity` or `anti-affinity` policies for workload placement instead of manual host pinning.
+  </Card>
+  <Card title="Dedicated CPU Flavors" icon="microchip">
+Create separate flavors with `hw:cpu_policy=dedicated` for CPU-sensitive workloads. Do not mix pinned and shared on the same host.
+  </Card>
+  <Card title="Audit Placement Regularly" icon="clipboard-check">
+Periodically verify VM placement matches expectations using `xloud server show` with extended attributes.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="403 Forbidden When Specifying Host">
+**Resolution:**
+1. Identify which host-pinning policy is required (e.g., `servers:create:forced_host` or `servers:create:requested_destination`)
+2. Check the user's role: `xloud role assignment list --user <user> --project <project> --names`
+3. Simulate: `oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml --rule "<policy-key>" ...`
+4. Update policy and reload: `systemctl reload nova-api`
+</Accordion>
+
+<Accordion title="VM Not Placed on Expected Host">
+**Resolution:**
+1. If `requested_destination` was used, the scheduler may override if the target lacks resources
+2. Verify target capacity: `xloud hypervisor show <host>`
+3. Check scheduler logs: `journalctl -u nova-scheduler`
+4. For guaranteed placement, use `forced_host` (admin only by default)
+</Accordion>
+
+<Accordion title="CPU Pinning Not Applied">
+**Resolution:**
+1. Verify flavor has `hw:cpu_policy=dedicated`: `xloud flavor show <flavor> -c properties`
+2. Ensure compute host has isolated CPUs in `nova.conf`:
+```ini
+[compute]
+cpu_dedicated_set = 4-31
+cpu_shared_set = 0-3
+```
+3. Restart compute service and rebuild the VM
+</Accordion>
+
+<Accordion title="Scheduler Ignoring Host Hint">
+**Resolution:**
+1. Confirm you are using `requested_destination` (not `forced_host`) — the scheduler validates and may reject
+2. Check that the target host has sufficient resources: `xloud hypervisor show <host>`
+3. Verify the host is in the correct availability zone and aggregate
+4. Review scheduler logs for filter/weigher decisions: `journalctl -u nova-scheduler`
+</Accordion>

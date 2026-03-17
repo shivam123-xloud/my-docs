@@ -1,0 +1,612 @@
+---
+title: "Provisioning Scripts — Bash & PowerShell"
+description: "Execute Bash or PowerShell scripts during VM provisioning to automate system bootstrapping via cloud-init, cloudbase-init, user data, and config drive."
+---
+
+## Overview
+
+The Xloud hypervisor provides built-in automation capabilities for executing scripts during VM provisioning. Bash or PowerShell scripts execute automatically at first boot to bootstrap the system — install packages, configure services, join domains, and register with management tools.
+
+<Card title="Provisioning Automation" icon="rocket">
+Execute Bash (Linux) or PowerShell (Windows) scripts at first boot via cloud-init / cloudbase-init to automate system bootstrapping.
+</Card>
+
+---
+
+## Architecture / Concepts
+
+### Script Delivery Methods
+
+| Method | Description | Delivery Time |
+|---|---|---|
+| **User Data** | Opaque data blob (scripts, cloud-config) passed during VM creation | First boot |
+| **Config Drive** | Special disk attached to VM containing metadata and user data files | First boot |
+| **Metadata Service** | REST API at `169.254.169.254` serving instance configuration | Anytime (VM queries) |
+| **Vendordata** | Operator-provided data injected into all VMs | First boot / on demand |
+| **Dynamic Vendordata** | API-driven vendordata generated at provisioning time | First boot |
+
+### Script Processing Engines
+
+| Engine | Platform | Description |
+|---|---|---|
+| **cloud-init** | Linux | Industry-standard initialization system — processes user data, runs scripts, configures networking, manages packages |
+| **cloudbase-init** | Windows | Windows equivalent of cloud-init — executes PowerShell scripts, configures WinRM, joins Active Directory |
+
+### How Provisioning Automation Works
+
+```
+VM Create (with --user-data script.sh)
+       ↓
+Xloud Compute stores user data (base64 encoded, max 65 KB)
+       ↓
+VM boots → cloud-init / cloudbase-init starts
+       ↓
+Retrieves user data from metadata service or config drive
+       ↓
+Detects script type (#! bash, #ps1 PowerShell, cloud-config YAML)
+       ↓
+Executes script → system bootstrapped
+```
+
+### User Data Types
+
+| Type | Prefix / Format | Description |
+|---|---|---|
+| **Shell Script** | `#!/bin/bash` | Bash script executed as root on Linux |
+| **PowerShell Script** | `#ps1_sysnative` or `#ps1_x86` | PowerShell script executed on Windows |
+| **Cloud-Config** | `#cloud-config` | YAML configuration for cloud-init modules |
+| **Include File** | `#include` | URL list of scripts to download and execute |
+| **Multipart MIME** | `Content-Type: multipart/mixed` | Combine multiple script types in one payload |
+| **Gzip Compressed** | Binary gzip | Compressed payload (useful for 65 KB limit) |
+
+### Metadata Access Points
+
+| Endpoint | Format | Example |
+|---|---|---|
+| `http://169.254.169.254/openstack/latest/user_data` | Raw user data | Script content |
+| `http://169.254.169.254/openstack/latest/meta_data.json` | Instance metadata JSON | Hostname, keys, custom metadata |
+| `http://169.254.169.254/openstack/latest/vendor_data.json` | Static vendordata | Operator-provided config |
+| `http://169.254.169.254/openstack/latest/vendor_data2.json` | Dynamic vendordata | API-generated config |
+| `http://169.254.169.254/openstack/latest/network_data.json` | Network configuration | Interface, IP, DNS config |
+| Config drive mount: `/mnt/config/openstack/latest/` | Same structure as above | Available offline |
+
+---
+
+## Prerequisites
+
+- VM image with **cloud-init** (Linux) or **cloudbase-init** (Windows) pre-installed
+- Metadata service or config drive enabled in the deployment
+- User data script file prepared (max 65,535 bytes after base64 encoding)
+
+---
+
+## Configuration
+
+### Provisioning Automation (First Boot Scripts)
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Prepare the Script">
+Create a Bash or PowerShell script for system bootstrapping.
+
+Example scripts are provided in the CLI tab below.
+      </Step>
+
+      <Step title="Launch Instance with User Data">
+Navigate to **Project** → **Compute** → **Instances** → **Launch Instance**.
+
+In the **Configuration** step:
+
+- **Customization Script** — Paste the script directly into the text area, or click **Load Script from File** to upload a script file
+- **Config Drive** — Enable if the VM needs offline access to metadata (no DHCP required)
+
+Complete the remaining wizard steps and click **Launch Instance**.
+      </Step>
+
+      <Step title="Verify Script Execution">
+After the VM reaches `ACTIVE` status:
+
+- Click the instance → **Console** tab → Verify bootstrap output
+- Click **Log** tab → Review cloud-init output for script execution status
+      </Step>
+    </Steps>
+
+    <Note>
+The GUI **Customization Script** field accepts any valid user data format — shell scripts, PowerShell scripts, or cloud-config YAML.
+    </Note>
+  </Tab>
+
+  <Tab title="CLI">
+
+#### Linux — Bash Script at Provisioning
+
+    <Steps>
+      <Step title="Create a Bash Bootstrap Script">
+```bash
+cat > bootstrap.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+
+# Update system
+apt-get update && apt-get upgrade -y
+
+# Install required packages
+apt-get install -y nginx docker.io python3-pip
+
+# Enable and start services
+systemctl enable --now nginx
+systemctl enable --now docker
+
+# Configure application
+mkdir -p /opt/app
+echo "Bootstrapped at $(date)" > /opt/app/status.txt
+
+# Register with configuration management
+curl -s https://config.xloud.local/register \
+  -d "hostname=$(hostname)" \
+  -d "ip=$(hostname -I | awk '{print $1}')"
+SCRIPT
+```
+      </Step>
+
+      <Step title="Launch VM with Script">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04-cloud \
+  --network prod-network \
+  --key-name my-keypair \
+  --user-data bootstrap.sh \
+  web-server-01
+```
+
+        <Warning>
+Do **not** base64-encode the user data file. The API encodes it automatically. Maximum size: 65,535 bytes after encoding.
+        </Warning>
+      </Step>
+    </Steps>
+
+#### Windows — PowerShell Script at Provisioning
+
+    <Steps>
+      <Step title="Create a PowerShell Bootstrap Script">
+```powershell
+cat > bootstrap.ps1 << 'SCRIPT'
+#ps1_sysnative
+
+# Set execution policy
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Force
+
+# Install IIS
+Install-WindowsFeature -Name Web-Server -IncludeManagementTools
+
+# Configure WinRM for remote management
+Enable-PSRemoting -Force
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
+
+# Join Active Directory domain
+$securePassword = ConvertTo-SecureString "DomainP@ss" -AsPlainText -Force
+$credential = New-Object PSCredential("XLOUD\admin", $securePassword)
+Add-Computer -DomainName "xloud.local" -Credential $credential -Restart
+
+# Log completion
+"Bootstrap completed at $(Get-Date)" | Out-File C:\bootstrap-status.txt
+SCRIPT
+```
+      </Step>
+
+      <Step title="Launch Windows VM with Script">
+```bash
+xloud server create \
+  --flavor m1.large \
+  --image windows-2022-cloudbase \
+  --network prod-network \
+  --user-data bootstrap.ps1 \
+  win-server-01
+```
+
+        <Info>
+Windows images must have **cloudbase-init** installed. Use `#ps1_sysnative` for 64-bit PowerShell or `#ps1_x86` for 32-bit.
+        </Info>
+      </Step>
+    </Steps>
+
+#### Cloud-Config YAML (Declarative Automation)
+
+    <Steps>
+      <Step title="Create Cloud-Config">
+```bash
+cat > cloud-config.yaml << 'SCRIPT'
+#cloud-config
+
+# Set hostname
+hostname: web-server-01
+fqdn: web-server-01.cloud.xloud.com
+
+# Create users
+users:
+  - name: deploy
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2E... deploy@xloud
+
+# Install packages
+packages:
+  - nginx
+  - docker.io
+  - python3-pip
+  - monitoring-agent
+
+# Write configuration files
+write_files:
+  - path: /etc/nginx/sites-available/app
+    content: |
+      server {
+        listen 80;
+        server_name _;
+        location / { proxy_pass http://127.0.0.1:8080; }
+      }
+
+# Run commands at boot
+runcmd:
+  - systemctl enable --now nginx
+  - systemctl enable --now docker
+  - ln -s /etc/nginx/sites-available/app /etc/nginx/sites-enabled/
+  - systemctl reload nginx
+SCRIPT
+```
+      </Step>
+
+      <Step title="Launch with Cloud-Config">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04-cloud \
+  --network prod-network \
+  --user-data cloud-config.yaml \
+  web-server-01
+```
+      </Step>
+    </Steps>
+
+#### Multipart MIME (Combined Scripts)
+
+    <Steps>
+      <Step title="Create Multipart Payload">
+Combine a cloud-config with a shell script:
+```bash
+cat > combined.txt << 'MIME'
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+
+--==BOUNDARY==
+Content-Type: text/cloud-config; charset="us-ascii"
+
+#cloud-config
+packages:
+  - nginx
+  - docker.io
+
+--==BOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+echo "Custom setup at $(date)" >> /var/log/bootstrap.log
+curl -s https://config.xloud.local/register -d "host=$(hostname)"
+
+--==BOUNDARY==--
+MIME
+```
+      </Step>
+
+      <Step title="Launch with Combined Payload">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04-cloud \
+  --network prod-network \
+  --user-data combined.txt \
+  multi-config-vm
+```
+      </Step>
+    </Steps>
+
+#### Config Drive (Offline Script Delivery)
+
+    <Steps>
+      <Step title="Launch with Config Drive Enabled">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04-cloud \
+  --network prod-network \
+  --config-drive true \
+  --user-data bootstrap.sh \
+  --property role=webserver \
+  --property environment=production \
+  config-drive-vm
+```
+The config drive is attached as a special disk and mounted at boot. Useful when DHCP/metadata service is unavailable.
+      </Step>
+
+      <Step title="Access Config Drive Inside VM">
+```bash
+# Mount config drive
+mkdir -p /mnt/config
+mount /dev/disk/by-label/config-2 /mnt/config
+
+# Read user data
+cat /mnt/config/openstack/latest/user_data
+
+# Read instance metadata
+cat /mnt/config/openstack/latest/meta_data.json
+
+# Read custom properties
+python3 -c "
+import json
+meta = json.load(open('/mnt/config/openstack/latest/meta_data.json'))
+print(meta['meta']['role'])        # webserver
+print(meta['meta']['environment']) # production
+"
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Script Type Reference
+
+### Linux (cloud-init)
+
+| Script Type | Header | Execution |
+|---|---|---|
+| Shell script | `#!/bin/bash` | Executed as root at first boot |
+| Cloud-config | `#cloud-config` | Declarative YAML — packages, users, files, commands |
+| Include file | `#include` | Downloads and executes scripts from URLs |
+| Boothook | `#cloud-boothook` | Runs early in boot, before networking |
+| Multipart MIME | `Content-Type: multipart/mixed` | Combines multiple types in one payload |
+
+### Windows (cloudbase-init)
+
+| Script Type | Header | Execution |
+|---|---|---|
+| PowerShell (64-bit) | `#ps1_sysnative` | Executes in native 64-bit PowerShell |
+| PowerShell (32-bit) | `#ps1_x86` | Executes in 32-bit PowerShell (WoW64) |
+| Batch script | `rem cmd` | Executes as CMD batch file |
+| Cloud-config | `#cloud-config` | Subset of cloud-init cloud-config directives |
+
+### Cloud-Config Modules (Commonly Used)
+
+| Module | Description | Example |
+|---|---|---|
+| `packages` | Install packages | `packages: [nginx, docker.io]` |
+| `users` | Create users with SSH keys and sudo | `users: [{name: deploy, ...}]` |
+| `write_files` | Create files with specified content | `write_files: [{path: /etc/app.conf, ...}]` |
+| `runcmd` | Execute commands in order | `runcmd: [systemctl start nginx]` |
+| `bootcmd` | Execute commands early in boot | `bootcmd: [modprobe br_netfilter]` |
+| `hostname` | Set system hostname | `hostname: web-01` |
+| `fqdn` | Set fully qualified domain name | `fqdn: web-01.xloud.com` |
+| `ssh_authorized_keys` | Inject SSH public keys | `ssh_authorized_keys: [ssh-rsa ...]` |
+| `apt` / `yum_repos` | Configure package repositories | `apt: {sources: {...}}` |
+| `ca_certs` | Install CA certificates | `ca_certs: {trusted: [...]}` |
+| `disk_setup` | Partition and format disks | `disk_setup: {/dev/vdb: {...}}` |
+| `mounts` | Configure filesystem mounts | `mounts: [[/dev/vdb1, /data]]` |
+| `phone_home` | Call back to URL after boot | `phone_home: {url: ...}` |
+
+---
+
+## Metadata Structure
+
+### meta_data.json
+
+```json
+{
+  "hostname": "web-01.novalocal",
+  "name": "web-01",
+  "uuid": "a1b2c3d4-...",
+  "availability_zone": "az-1",
+  "project_id": "proj-123",
+  "launch_index": 0,
+  "meta": {
+    "role": "webserver",
+    "environment": "production",
+    "workflow": "none"
+  },
+  "keys": [
+    { "name": "my-keypair", "type": "ssh", "data": "ssh-rsa AAAA..." }
+  ],
+  "public_keys": {
+    "my-keypair": "ssh-rsa AAAA..."
+  }
+}
+```
+
+### Config Drive Directory Structure
+
+```
+/mnt/config/
+├── openstack/
+│   └── latest/
+│       ├── meta_data.json
+│       ├── network_data.json
+│       ├── user_data
+│       ├── vendor_data.json
+│       └── vendor_data2.json
+└── ec2/
+    └── latest/
+        ├── meta-data/
+        └── user-data
+```
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify User Data Was Delivered">
+From inside the VM:
+```bash
+curl -s http://169.254.169.254/openstack/latest/user_data | head -5
+```
+Should return the script content.
+  </Step>
+
+  <Step title="Verify Cloud-Init Execution (Linux)">
+```bash
+# Check cloud-init status
+cloud-init status
+
+# View cloud-init log
+cat /var/log/cloud-init-output.log
+
+# Check for errors
+grep -i error /var/log/cloud-init.log
+```
+  </Step>
+
+  <Step title="Verify Cloudbase-Init Execution (Windows)">
+```powershell
+# Check cloudbase-init log
+Get-Content C:\Program Files\Cloudbase Solutions\Cloudbase-Init\log\cloudbase-init.log
+
+# Verify script execution
+Get-Content C:\bootstrap-status.txt
+```
+  </Step>
+
+  <Step title="Verify Config Drive">
+```bash
+# Check if config drive is attached
+blkid -t LABEL="config-2" -odevice
+
+# Mount and verify
+mount /dev/disk/by-label/config-2 /mnt/config
+ls /mnt/config/openstack/latest/
+cat /mnt/config/openstack/latest/user_data
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Cloud-Config for Declarative Setup" icon="file-code">
+Prefer `#cloud-config` YAML over raw shell scripts for standard tasks (packages, users, files). Cloud-config is idempotent and handles errors gracefully.
+  </Card>
+  <Card title="Keep Scripts Under 65 KB" icon="compress">
+User data has a 65,535-byte limit after base64 encoding. For larger payloads, use `#include` to download scripts from a URL, or use gzip compression.
+  </Card>
+  <Card title="Use Config Drive for Air-Gapped VMs" icon="hard-drive">
+Enable config drive (`--config-drive true`) for VMs that boot before DHCP or metadata service is available, such as during network bootstrapping.
+  </Card>
+  <Card title="Use Multipart MIME for Complex Setups" icon="layer-group">
+Combine cloud-config (packages, users) with shell scripts (custom logic) using multipart MIME for comprehensive bootstrapping.
+  </Card>
+  <Card title="Log Script Output" icon="scroll">
+Always redirect script output to a log file. Check `/var/log/cloud-init-output.log` (Linux) or cloudbase-init logs (Windows) for execution results.
+  </Card>
+</CardGroup>
+
+<Warning>
+Never embed production secrets (passwords, API keys) directly in user data scripts. User data is accessible to anyone with project-level read access. Use the Xloud Credential Store (Key Manager) or vendordata for sensitive values.
+</Warning>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Script Does Not Execute at Boot">
+**Symptom:** VM boots but the user data script was not executed.
+
+**Resolution:**
+
+1. Verify the image has cloud-init (Linux) or cloudbase-init (Windows) installed:
+```bash
+ssh ubuntu@<vm-ip> 'dpkg -l cloud-init'
+```
+2. Check the script has the correct header (`#!/bin/bash`, `#ps1_sysnative`, or `#cloud-config`)
+3. Verify user data was delivered:
+```bash
+curl -s http://169.254.169.254/openstack/latest/user_data
+```
+4. Check cloud-init logs:
+```bash
+cat /var/log/cloud-init-output.log
+grep -i error /var/log/cloud-init.log
+```
+5. Ensure the script file was not base64-encoded before passing (API encodes automatically)
+</Accordion>
+
+<Accordion title="User Data Size Limit Exceeded">
+**Symptom:** VM creation fails with user data size error.
+
+**Resolution:**
+
+1. Check script size: `wc -c bootstrap.sh` (must be under ~48 KB before encoding)
+2. Use gzip compression:
+```bash
+gzip -c bootstrap.sh > bootstrap.sh.gz
+xloud server create --user-data bootstrap.sh.gz ...
+```
+3. Use `#include` to download large scripts from a URL:
+```
+#include
+https://config.xloud.local/scripts/bootstrap.sh
+https://config.xloud.local/scripts/configure.sh
+```
+</Accordion>
+
+<Accordion title="Metadata Service Unreachable Inside VM">
+**Symptom:** `curl http://169.254.169.254` times out from inside the VM.
+
+**Resolution:**
+
+1. Verify the metadata proxy is running on the network node:
+```bash
+systemctl status neutron-metadata-agent
+```
+2. Verify the route exists inside the VM:
+```bash
+ip route | grep 169.254
+```
+3. Use config drive as a fallback:
+```bash
+xloud server create --config-drive true --user-data script.sh ...
+```
+4. Check security group rules — metadata traffic may be blocked
+</Accordion>
+
+<Accordion title="PowerShell Script Fails on Windows">
+**Symptom:** Windows VM boots but PowerShell script did not execute.
+
+**Resolution:**
+
+1. Verify the image has cloudbase-init installed
+2. Use the correct header: `#ps1_sysnative` (not `#!/powershell`)
+3. Check cloudbase-init logs:
+```
+C:\Program Files\Cloudbase Solutions\Cloudbase-Init\log\cloudbase-init.log
+```
+4. Verify execution policy allows the script:
+```powershell
+Get-ExecutionPolicy
+```
+5. Ensure the script uses Windows line endings (CRLF) if created on Linux
+</Accordion>
+
+<Accordion title="Cloud-Init Runs Only Once">
+**Symptom:** Rebooting the VM does not re-execute user data scripts.
+
+**Resolution:**
+
+- This is expected behavior. Cloud-init scripts run at **first boot only** by default
+- To re-run: `sudo cloud-init clean && sudo cloud-init init`
+- For ongoing operational scripts, use metadata-driven workflows, cron jobs, or SSH-based execution instead of user data
+</Accordion>

@@ -1,0 +1,778 @@
+---
+title: "Dashboard"
+description: "Consolidated Xloud Dashboard providing a unified view of environment status, system health, alarms, log history, instance status, cloud workloads, and cluster operations."
+---
+
+## Overview
+
+The Xloud Dashboard provides a consolidated, web-based management interface for monitoring and managing the entire virtualized environment. It delivers real-time visibility into system health, instance status, resource utilization, alarms, and operational logs — all from a single pane of glass.
+
+<CardGroup cols={3}>
+  <Card title="Environment Status" icon="gauge-high">
+Real-time overview of hypervisor health, resource utilization, and service availability across all configured clouds.
+  </Card>
+  <Card title="Alarms & Alerts" icon="bell">
+Centralized alarm management with configurable thresholds for CPU, memory, disk, and network metrics.
+  </Card>
+  <Card title="Instance Monitoring" icon="server">
+Live instance status tracking with filtering by project, cloud, status, and tags.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture / Concepts
+
+### Dashboard Structure
+
+The Xloud Dashboard is organized into four primary navigation panels:
+
+| Panel | Description | Access Level |
+|---|---|---|
+| **Project** | Project-scoped view — instances, volumes, networks, images, security, and usage for the active project | All authenticated users |
+| **Admin** | System-wide administration — hypervisors, services, aggregates, flavors, system status, and all-project views | Admin role only |
+| **Identity** | User, group, project, role, and domain management | Admin / Identity manager |
+| **Settings** | User preferences — language, timezone, table density, password changes | All authenticated users |
+
+### Dashboard Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    XLOUD DASHBOARD                          │
+├──────────┬──────────────────────────────────────────────────┤
+│          │  ┌──────────────────────────────────────────┐    │
+│          │  │  ENVIRONMENT OVERVIEW                     │    │
+│          │  │  • Total Instances / vCPUs / RAM / Disk   │    │
+│          │  │  • Hypervisor Utilization                 │    │
+│          │  │  • Service Health Status                  │    │
+│  NAV     │  └──────────────────────────────────────────┘    │
+│  PANEL   │  ┌────────────┬─────────────────────────────┐    │
+│          │  │  ALARMS    │  INSTANCE STATUS             │    │
+│  Project │  │  Active    │  By Cloud / By Project       │    │
+│  Admin   │  │  Warning   │  Running / Stopped / Error   │    │
+│  Identity│  │  Critical  │  Migrating / Building        │    │
+│  Settings│  └────────────┴─────────────────────────────┘    │
+│          │  ┌──────────────────────────────────────────┐    │
+│          │  │  LOG HISTORY / AUDIT TRAIL                │    │
+│          │  │  • User actions • API calls • Events      │    │
+│          │  └──────────────────────────────────────────┘    │
+└──────────┴──────────────────────────────────────────────────┘
+```
+
+---
+
+## Prerequisites
+
+- Xloud Dashboard service deployed and accessible via HTTPS
+- Xloud Identity (Keystone) configured with user authentication
+- Compute, Network, Block Storage, and Image services operational
+- Admin role assigned for access to system-level panels
+- Supported browser: Chrome, Firefox, Safari, or Edge (latest versions)
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Log In to Xloud Dashboard">
+Navigate to the Xloud Dashboard URL (e.g., `https://dashboard.xloud.local`).
+
+Enter credentials:
+
+- **Domain** — Authentication domain (default: `Default`)
+- **Username** — Xloud user account
+- **Password** — Account password
+
+Click **Sign In**.
+      </Step>
+      <Step title="Access the Overview Panel">
+After login, the dashboard opens to the **Project** → **Compute** → **Overview** panel.
+
+This panel displays:
+
+- **Usage Summary** — vCPUs, RAM, disk, and instances consumed vs. quota
+- **Usage Chart** — Resource utilization over the selected time range
+- **Date Range Filter** — Adjust the reporting period
+      </Step>
+      <Step title="Switch to Admin Panel">
+Click **Admin** in the left navigation to access system-wide views (requires admin role).
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Dashboard configuration is managed via the `local_settings.py` file on the Dashboard server.
+
+    <Steps>
+      <Step title="Configure Overview Date Range">
+```bash
+vi /etc/openstack-dashboard/local_settings.py
+```
+
+```python
+# Days of usage data shown in the Overview panel
+# Set to None to show from beginning of current month
+OVERVIEW_DAYS_RANGE = 30
+```
+      </Step>
+      <Step title="Configure API Display Limits">
+```python
+# Max objects before truncation warning
+API_RESULT_LIMIT = 1000
+
+# Objects per page in tables
+API_RESULT_PAGE_SIZE = 20
+```
+      </Step>
+      <Step title="Enable Operation Logging">
+```python
+# Enable user action audit trail
+OPERATION_LOG_ENABLED = True
+
+# Mask sensitive fields in logs
+OPERATION_LOG_OPTIONS = {
+    'mask_fields': ['password', 'token'],
+    'target_methods': ['POST', 'PUT', 'DELETE'],
+}
+```
+      </Step>
+      <Step title="Configure Session Management">
+```python
+# Session timeout (seconds)
+SESSION_TIMEOUT = 3600
+
+# Handle concurrent sessions: 'allow' or 'disconnect'
+SIMULTANEOUS_SESSIONS = 'disconnect'
+```
+      </Step>
+      <Step title="Enable/Disable Panel Features">
+```python
+ANGULAR_FEATURES = {
+    'images_panel': True,
+    'key_pairs_panel': True,
+    'flavors_panel': True,
+    'domains_panel': True,
+    'users_panel': True,
+    'groups_panel': True,
+    'roles_panel': True,
+}
+```
+      </Step>
+      <Step title="Restart Dashboard Service">
+```bash
+systemctl restart httpd   # RHEL/CentOS
+systemctl restart apache2 # Ubuntu
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Dashboard Panels
+
+### 1. Environment Overview
+
+The Overview panel provides a consolidated snapshot of the entire Xloud environment.
+
+<Accordion title="Project Overview (All Users)">
+
+**Path:** Project → Compute → Overview
+
+| Metric | Description |
+|---|---|
+| **Instances** | Active instance count vs. quota limit |
+| **vCPUs** | Total vCPUs in use vs. allocated quota |
+| **RAM** | Total memory consumed vs. quota |
+| **Disk** | Total disk usage across all instances |
+| **Usage Chart** | Visual chart of resource consumption over time |
+
+The overview supports configurable date ranges for usage reporting. Administrators can set `OVERVIEW_DAYS_RANGE` to control how far back data is displayed.
+
+</Accordion>
+
+<Accordion title="Admin Overview (Admin Only)">
+
+**Path:** Admin → Compute → Overview
+
+Provides a system-wide aggregated view:
+
+| Metric | Description |
+|---|---|
+| **Total Instances** | Count across all projects |
+| **Total vCPUs** | System-wide CPU allocation |
+| **Total RAM** | System-wide memory allocation |
+| **Total Disk** | System-wide storage consumption |
+| **Per-Project Usage** | Breakdown by project with resource consumption details |
+| **Date Range Filter** | Configurable reporting period |
+
+</Accordion>
+
+---
+
+### 2. System Status
+
+<Accordion title="Hypervisor Status">
+
+**Path:** Admin → Compute → Hypervisors
+
+| Column | Description |
+|---|---|
+| **Hostname** | Hypervisor host name |
+| **Type** | Hypervisor type |
+| **vCPUs (Used/Total)** | CPU allocation and capacity |
+| **RAM (Used/Total)** | Memory allocation and capacity |
+| **Local Disk (Used/Total)** | Ephemeral storage utilization |
+| **Instances** | Number of VMs running on this host |
+| **State** | Hypervisor operational state (up/down) |
+| **Status** | Service status (enabled/disabled) |
+
+</Accordion>
+
+<Accordion title="Compute Services">
+
+**Path:** Admin → Compute → Services
+
+| Column | Description |
+|---|---|
+| **Service** | Service name (nova-compute, nova-scheduler, nova-conductor) |
+| **Host** | Host running the service |
+| **Zone** | Availability zone |
+| **Status** | Enabled or disabled |
+| **State** | Up or down |
+| **Last Updated** | Timestamp of last heartbeat |
+
+<Warning>
+  A service showing **State: Down** with **Status: Enabled** indicates a service failure. Investigate immediately.
+</Warning>
+
+</Accordion>
+
+<Accordion title="Network Agents">
+
+**Path:** Admin → Network → Network Agents
+
+| Column | Description |
+|---|---|
+| **Agent Type** | DHCP agent, L3 agent, Metadata agent, OVS agent |
+| **Host** | Agent host |
+| **Availability Zone** | Zone assignment |
+| **Alive** | Agent heartbeat status |
+| **State** | Admin state (up/down) |
+
+</Accordion>
+
+<Accordion title="Block Storage Services">
+
+**Path:** Admin → Volumes → Volume Services
+
+Displays the health and status of all Block Storage services across the deployment.
+
+</Accordion>
+
+<Accordion title="System Information">
+
+**Path:** Admin → System → System Information
+
+Provides a consolidated view of:
+
+- All registered services and their endpoints
+- Compute services, network agents, and block storage services
+- Service versions and host mappings
+
+</Accordion>
+
+---
+
+### 3. Alarms & Notifications
+
+<Accordion title="Alarm Configuration">
+
+Xloud Dashboard integrates with the Telemetry service (Aodh) for alarm management.
+
+**Path:** Admin → Monitoring → Alarms (if Telemetry is enabled)
+
+| Alarm Type | Description |
+|---|---|
+| **Threshold Alarm** | Triggers when a metric crosses a defined threshold (e.g., CPU > 90%) |
+| **Composite Alarm** | Combines multiple conditions with AND/OR logic |
+| **Event Alarm** | Triggers on specific system events |
+
+**Configurable metrics:**
+
+| Metric | Description | Example Threshold |
+|---|---|---|
+| CPU Utilization | Per-instance or per-host CPU usage | > 90% for 5 minutes |
+| Memory Usage | RAM consumption | > 85% for 10 minutes |
+| Disk I/O | Read/write operations per second | > 5000 IOPS sustained |
+| Network Traffic | Ingress/egress bandwidth | > 1 Gbps for 5 minutes |
+| Instance Count | Number of active instances | > 95% of quota |
+| Service Health | Service heartbeat status | State = Down |
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create an Alarm">
+Navigate to **Admin** → **Monitoring** → **Alarms** → Click **Create Alarm**.
+      </Step>
+      <Step title="Configure Alarm">
+
+- **Name** — Descriptive alarm name
+- **Type** — Threshold, Composite, or Event
+- **Metric** — Select the metric to monitor
+- **Threshold** — Set the trigger value
+- **Period** — Evaluation window (seconds)
+- **Severity** — Low, Moderate, or Critical
+- **Action** — Notification URL or webhook
+      </Step>
+      <Step title="Save">
+Click **Create Alarm**. The alarm appears in the alarm list with its current state (OK, Alarm, Insufficient Data).
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Create CPU threshold alarm
+xloud alarm create \
+  --name high-cpu-alert \
+  --type threshold \
+  --meter-name cpu_util \
+  --threshold 90 \
+  --comparison-operator gt \
+  --statistic avg \
+  --period 300 \
+  --evaluation-periods 3 \
+  --severity critical \
+  --alarm-action "http://alerts.xloud.local/webhook"
+
+# List alarms
+xloud alarm list
+
+# Show alarm state
+xloud alarm show <alarm-id>
+
+# Delete alarm
+xloud alarm delete <alarm-id>
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+---
+
+### 4. Log History & Audit Trail
+
+<Accordion title="Operation Log">
+
+When `OPERATION_LOG_ENABLED` is set to `True`, the Dashboard records all user actions as an audit trail.
+
+**Captured information:**
+
+| Field | Description |
+|---|---|
+| **Timestamp** | When the action occurred |
+| **User** | Authenticated user who performed the action |
+| **Project** | Project context |
+| **Action** | HTTP method (POST, PUT, DELETE) |
+| **Resource** | Target resource type and ID |
+| **Result** | Success or failure status |
+
+<Tabs>
+  <Tab title="GUI">
+Navigate to **Admin** → **System** → **Operation Log** to view the audit trail.
+
+Use filters to narrow by:
+
+- Date range
+- User
+- Action type
+- Resource type
+  </Tab>
+  <Tab title="CLI">
+Dashboard operation logs are stored in the configured log directory:
+```bash
+tail -f /var/log/horizon/operation.log
+```
+
+For Compute instance action history:
+```bash
+xloud server event list <server-id>
+xloud server event show <server-id> <request-id>
+```
+
+For system-wide audit (via Telemetry):
+```bash
+xloud event list --query "event_type=compute.instance.*"
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+<Accordion title="Instance Action History">
+
+**Path:** Project → Compute → Instances → Select Instance → **Action Log** tab
+
+Displays a chronological record of all actions performed on the instance:
+
+| Field | Description |
+|---|---|
+| **Action** | Operation type (create, stop, start, reboot, resize, migrate, etc.) |
+| **Start Time** | When the action was initiated |
+| **User** | User who triggered the action |
+| **Message** | Status message or error details |
+| **Request ID** | Unique identifier for tracing |
+
+</Accordion>
+
+---
+
+### 5. Instance Status
+
+<Accordion title="Instance List & Status View">
+
+**Path:** Project → Compute → Instances
+
+The instance panel displays all VMs in the active project with real-time status:
+
+| Column | Description |
+|---|---|
+| **Name** | Instance name (clickable for details) |
+| **Image** | Source image used |
+| **IP Address** | Assigned network addresses |
+| **Flavor** | Resource configuration |
+| **Key Pair** | SSH keypair assigned |
+| **Status** | Current state (Active, Shutoff, Error, Build, etc.) |
+| **Availability Zone** | Zone where the instance is running |
+| **Task** | Current task state (if any) |
+| **Power State** | Power state (Running, Shutdown, Paused, Suspended) |
+| **Age** | Time since creation |
+
+**Available actions per instance:**
+
+| Action | Description |
+|---|---|
+| Create Snapshot | Capture current disk state |
+| Associate Floating IP | Assign external IP |
+| Attach Interface | Add network interface |
+| Attach Volume | Add block storage |
+| Edit Instance | Modify name, security groups |
+| Edit Security Groups | Add/remove firewall rules |
+| Console | Open VNC console |
+| View Log | Show console output |
+| Pause / Unpause | Freeze/resume in memory |
+| Suspend / Resume | Save/restore state to disk |
+| Shelve / Unshelve | Archive/restore VM |
+| Resize | Change flavor |
+| Lock / Unlock | Prevent/allow modifications |
+| Soft Reboot / Hard Reboot | Restart options |
+| Stop / Start | Power off/on |
+| Rebuild | Reinstall from image |
+| Delete | Remove instance |
+
+</Accordion>
+
+<Accordion title="Admin Instance View (All Projects)">
+
+**Path:** Admin → Compute → Instances
+
+Provides a system-wide view of all instances across all projects:
+
+| Additional Column | Description |
+|---|---|
+| **Project** | Owning project |
+| **Host** | Hypervisor host running the instance |
+| **All Tenants** | Cross-project visibility |
+
+Admin-specific actions:
+
+- **Live Migrate** — Move running instance to another host
+- **Migrate** — Cold migrate to another host
+- **Evacuate** — Recover from failed host
+
+</Accordion>
+
+---
+
+### 6. Instance Status by Configured Clouds
+
+<Accordion title="Multi-Cloud / Multi-Region View">
+
+For deployments with multiple availability zones or regions, the dashboard provides aggregated views:
+
+**Path:** Admin → Compute → Overview (with project filter)
+
+| View | Description |
+|---|---|
+| **By Availability Zone** | Instance count and resource usage per zone |
+| **By Host Aggregate** | Workload distribution across host groups |
+| **By Project** | Per-project resource consumption and instance counts |
+| **By Status** | Instance count grouped by status (Active, Shutoff, Error, etc.) |
+
+<Tabs>
+  <Tab title="GUI">
+Use the **Admin Overview** panel and filter by availability zone or project to view cloud-specific status.
+
+Navigate to **Admin** → **Compute** → **Host Aggregates** to see workload distribution across host groups.
+
+Navigate to **Admin** → **Compute** → **Availability Zones** to view zone-level status.
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Instance count by availability zone
+xloud server list --all-projects --long -c Name -c Status -c "Availability Zone"
+
+# Hypervisor utilization per host
+xloud hypervisor list --long
+
+# Usage by project
+xloud usage list --start 2026-03-01 --end 2026-03-17
+
+# Instances per host
+xloud server list --all-projects --host compute-node-01
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+---
+
+### 7. Cluster Workloads
+
+<Accordion title="Resource Utilization & Capacity">
+
+**Path:** Admin → Compute → Hypervisors (summary view)
+
+The hypervisor summary provides cluster-level workload metrics:
+
+| Metric | Description |
+|---|---|
+| **Total vCPUs** | Total CPU capacity across all hypervisors |
+| **Used vCPUs** | CPUs allocated to instances |
+| **Total RAM** | Total memory across the cluster |
+| **Used RAM** | Memory allocated to instances |
+| **Total Disk** | Total local storage capacity |
+| **Used Disk** | Disk space consumed by instances |
+| **Total Instances** | Running instance count across the cluster |
+| **Total Hypervisors** | Number of active hypervisor nodes |
+
+<Tabs>
+  <Tab title="GUI">
+The **Hypervisors** panel header displays aggregated cluster totals. The table below shows per-host breakdown.
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Cluster-wide hypervisor statistics
+xloud hypervisor stats show
+
+# Per-host details
+xloud hypervisor list --long
+
+# Individual host capacity
+xloud hypervisor show <hypervisor-id>
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+<Accordion title="Host Aggregates & Workload Groups">
+
+**Path:** Admin → Compute → Host Aggregates
+
+| Column | Description |
+|---|---|
+| **Name** | Aggregate name |
+| **Availability Zone** | Associated zone |
+| **Hosts** | List of member hosts |
+| **Metadata** | Key-value properties for scheduling |
+
+<Tabs>
+  <Tab title="GUI">
+Navigate to **Admin** → **Compute** → **Host Aggregates**.
+
+- View existing aggregates and their host membership
+- Click **Create Host Aggregate** to define new workload groups
+- Manage host membership and metadata from the aggregate detail page
+  </Tab>
+  <Tab title="CLI">
+```bash
+# List aggregates
+xloud aggregate list
+
+# Show aggregate details
+xloud aggregate show <aggregate-id>
+
+# List availability zones
+xloud availability zone list
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+<Accordion title="Quota Management">
+
+**Path:** Admin → System → Default Quotas / Project → Compute → Overview
+
+| Quota | Description |
+|---|---|
+| **Instances** | Maximum VMs per project |
+| **vCPUs** | Maximum CPU cores per project |
+| **RAM** | Maximum memory (MB) per project |
+| **Volumes** | Maximum block storage volumes |
+| **Snapshots** | Maximum volume snapshots |
+| **Floating IPs** | Maximum external IPs |
+| **Security Groups** | Maximum firewall rule groups |
+| **Networks** | Maximum networks per project |
+
+<Tabs>
+  <Tab title="GUI">
+**View quotas:** Project → Compute → Overview (shows usage vs. limits)
+
+**Modify quotas:** Admin → Identity → Projects → Select project → **Modify Quotas**
+  </Tab>
+  <Tab title="CLI">
+```bash
+# View project quotas
+xloud quota show <project-id>
+
+# View usage
+xloud quota show <project-id> --usage
+
+# Set quotas
+xloud quota set <project-id> \
+  --instances 50 \
+  --cores 100 \
+  --ram 204800
+```
+  </Tab>
+</Tabs>
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify Dashboard Access">
+Open `https://dashboard.xloud.local` in a browser. Confirm the login page loads and authentication succeeds.
+  </Step>
+
+  <Step title="Verify Project Overview">
+Navigate to **Project** → **Compute** → **Overview**. Confirm usage metrics display correctly with quota limits.
+  </Step>
+
+  <Step title="Verify Admin Panels">
+Navigate to **Admin** → **Compute** → **Hypervisors**. Confirm all hypervisor hosts are listed with status `Up`.
+
+Navigate to **Admin** → **Compute** → **Services**. Confirm all services show **State: Up** and **Status: Enabled**.
+  </Step>
+
+  <Step title="Verify Instance Status">
+Navigate to **Project** → **Compute** → **Instances**. Confirm all instances display with correct status and action menus are functional.
+  </Step>
+
+  <Step title="Verify Logging">
+If operation logging is enabled:
+```bash
+tail -20 /var/log/horizon/operation.log
+```
+Confirm user actions are being recorded.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Enable Operation Logging" icon="clock-rotate-left">
+Set `OPERATION_LOG_ENABLED = True` for audit compliance. Mask sensitive fields like passwords and tokens in log output.
+  </Card>
+  <Card title="Set Reasonable Page Sizes" icon="table">
+Configure `API_RESULT_PAGE_SIZE` appropriately for the environment size. Large page sizes impact dashboard performance in deployments with thousands of resources.
+  </Card>
+  <Card title="Configure Session Timeouts" icon="hourglass-half">
+Set `SESSION_TIMEOUT` based on security requirements. Shorter timeouts (900–1800s) are recommended for sensitive environments.
+  </Card>
+  <Card title="Use HTTPS Only" icon="lock">
+Always deploy the Dashboard behind HTTPS. Configure HSTS headers and redirect HTTP to HTTPS.
+  </Card>
+  <Card title="Monitor Service Health" icon="heart-pulse">
+Regularly check the Admin → Services panel. Set up external monitoring to alert when services show Down state.
+  </Card>
+  <Card title="Configure Alarms" icon="bell">
+Set threshold alarms for critical metrics (CPU > 90%, RAM > 85%, disk > 80%). Configure webhook actions for automated incident response.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Dashboard Login Fails">
+  **Symptom:** Unable to authenticate on the login page.
+
+  **Resolution:**
+  1. Verify Xloud Identity (Keystone) service is running: `systemctl status keystone`
+  2. Check the Dashboard Keystone endpoint in `local_settings.py`:
+```python
+OPENSTACK_KEYSTONE_URL = "https://identity.xloud.local:5000/v3"
+```
+  3. Verify the user exists and has valid credentials
+  4. Check Dashboard logs: `tail -f /var/log/horizon/horizon.log`
+</Accordion>
+
+<Accordion title="Admin Panels Not Visible">
+  **Symptom:** Only Project and Settings panels appear; Admin panel is missing.
+
+  **Resolution:**
+  1. Verify the user has the `admin` role: `xloud role assignment list --user <user> --names`
+  2. Check that the admin panel is enabled in `local_settings.py`
+  3. Clear browser cache and re-login
+</Accordion>
+
+<Accordion title="Overview Shows No Usage Data">
+  **Symptom:** Usage charts and metrics show zero or are empty.
+
+  **Resolution:**
+  1. Check `OVERVIEW_DAYS_RANGE` setting — a value of `1` shows only the current day
+  2. Set to `None` to show data from the beginning of the month:
+```python
+OVERVIEW_DAYS_RANGE = None
+```
+  3. Verify Compute service is reporting usage: `xloud usage show --project <project>`
+  4. Restart the Dashboard service after configuration changes
+</Accordion>
+
+<Accordion title="Service Shows Down in System Status">
+  **Symptom:** A compute or network service shows **State: Down** in the admin panel.
+
+  **Resolution:**
+  1. Identify the affected host and service
+  2. SSH to the host and check the service: `systemctl status nova-compute`
+  3. Review service logs: `journalctl -u nova-compute --since "1 hour ago"`
+  4. Verify message queue connectivity (RabbitMQ)
+  5. Restart the service if needed: `systemctl restart nova-compute`
+</Accordion>
+
+<Accordion title="Dashboard Performance Degradation">
+  **Symptom:** Pages load slowly, especially instance and volume lists.
+
+  **Resolution:**
+  1. Reduce `API_RESULT_LIMIT` and `API_RESULT_PAGE_SIZE`:
+```python
+API_RESULT_LIMIT = 500
+API_RESULT_PAGE_SIZE = 10
+```
+  2. Enable caching in `local_settings.py`
+  3. Check the Keystone and Nova API response times
+  4. Review Apache/Nginx access logs for slow requests
+  5. Consider deploying multiple Dashboard instances behind a load balancer
+</Accordion>

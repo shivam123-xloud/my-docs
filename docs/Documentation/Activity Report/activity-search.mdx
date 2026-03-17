@@ -1,0 +1,223 @@
+---
+title: "Activity Search"
+description: "Search specific activities across the Xloud Compute environment — by request ID, user, action type, date range, status, and more."
+---
+
+## Overview
+
+Xloud Compute provides powerful search and filtering capabilities to locate specific activities across the entire virtualized environment. Whether tracing a single operation by request ID or finding all failed provisioning attempts across projects, the search tools enable precise activity discovery.
+
+<CardGroup cols={2}>
+  <Card title="Search & Filter" icon="magnifying-glass">
+Search specific activities by action type, user, date range, request ID, or resource.
+  </Card>
+  <Card title="Cross-Environment" icon="globe">
+Search across all instances, projects, and hosts with admin-level access.
+  </Card>
+</CardGroup>
+
+---
+
+## Search Capabilities
+
+### Search Methods Summary
+
+| Search Criteria | Method | Example |
+|---|---|---|
+| **By VM** | `xloud server event list <server-id>` | All actions on a specific VM |
+| **By Request ID** | `xloud server event show <server-id> <req-id>` | Trace a specific operation |
+| **By User** | `xloud server list --user <user-id>` | All instances by user |
+| **By Project** | `xloud server list --project <project-id>` | All instances in a project |
+| **By Status** | `xloud server list --status ERROR` | Instances in specific state |
+| **By Date Range** | `--changes-since` / `--changes-before` | Actions within time window |
+| **By Action Type** | API filter on action field | Specific operation types |
+| **By Tag** | `xloud server list --tags <tag>` | Instances with specific tags |
+| **By Host** | `xloud server list --host <host>` | Instances on specific host (admin) |
+| **By AZ** | `xloud server list --availability-zone <az>` | Instances in specific zone |
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+
+### Search Specific Activity
+
+    <Steps>
+      <Step title="Filter Instances">
+On the **Instances** page, use the search bar to filter by:
+
+- **Name** — Instance name
+- **Status** — Current state
+- **Task** — Active task
+- **Power State** — Running, shutdown, etc.
+      </Step>
+
+      <Step title="Search Action Log">
+Within the **Action Log** tab, scroll or use browser search to locate a specific action by type or timestamp.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+### Search by Request ID
+
+    <Steps>
+      <Step title="Trace a Specific Operation">
+Trace a specific operation across the system:
+```bash
+xloud server event show <server-id> <request-id>
+```
+The `request-id` is returned in API response headers (`X-Openstack-Request-Id`) for every operation.
+      </Step>
+    </Steps>
+
+### Search Actions Across All Instances
+
+    <Steps>
+      <Step title="List All Instances with Recent Actions">
+List all instances and their recent actions:
+```bash
+# List all instances with status
+xloud server list --all-projects --long
+
+# For a specific instance's full history
+xloud server event list <server-id>
+```
+      </Step>
+    </Steps>
+
+### Filter Instances by Action Result
+
+    <Steps>
+      <Step title="Find Instances by State">
+Find instances in error state (failed provisioning):
+```bash
+xloud server list --status ERROR --all-projects
+```
+
+Find instances currently being migrated:
+```bash
+xloud server list --status MIGRATING --all-projects
+```
+
+Find recently changed instances:
+```bash
+xloud server list --changes-since 2026-03-17T00:00:00
+```
+      </Step>
+    </Steps>
+
+### Search by User
+
+    <Steps>
+      <Step title="Find Instances by User or Project">
+Identify all instances owned by a specific user:
+```bash
+xloud server list --user <user-id> --all-projects
+```
+
+Or filter by project:
+```bash
+xloud server list --project <project-id>
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Advanced Search Examples
+
+<Accordion title="Search Actions on a VM Within a Date Range">
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/servers/<server-id>/os-instance-actions?\
+changes-since=2026-03-15T00:00:00&changes-before=2026-03-17T23:59:59&limit=50" \
+  | python3 -m json.tool
+```
+</Accordion>
+
+<Accordion title="Find All Instances Changed in the Last 24 Hours">
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/servers/detail?changes-since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)" \
+  | python3 -m json.tool
+```
+</Accordion>
+
+<Accordion title="Usage Report for a Specific Project">
+```bash
+curl -s -H "X-Auth-Token: $TOKEN" \
+  "$COMPUTE_URL/os-simple-tenant-usage/<project-id>?start=2026-03-01&end=2026-03-17&detailed=1" \
+  | python3 -m json.tool
+```
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify Action Search">
+Perform an action and search by request ID:
+```bash
+# Stop returns request ID in headers
+xloud server stop activity-test -v 2>&1 | grep X-Openstack-Request-Id
+
+# Search by that request ID
+xloud server event show activity-test <request-id>
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={1}>
+  <Card title="Use Request IDs for Tracing" icon="fingerprint">
+Every API call returns a unique `X-Openstack-Request-Id`. Log these IDs in automation scripts to enable precise activity tracing across the stack.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Cannot Search Across All Projects">
+**Symptom:** `--all-projects` flag returns only the user's own instances.
+
+**Resolution:**
+1. Verify the user has `admin` role: `xloud role assignment list --user <user> --names`
+2. The following policies must allow admin access:
+
+- `os_compute_api:servers:index:get_all_tenants`
+- `os_compute_api:servers:detail:get_all_tenants`
+3. Check policy overrides in `/etc/nova/policy.yaml`
+</Accordion>
+
+<Accordion title="Changes-Since Filter Not Working">
+**Symptom:** `--changes-since` returns all actions regardless of timestamp.
+
+**Resolution:**
+1. Ensure the API microversion supports this filter (2.58+):
+```bash
+curl -H "X-OpenStack-Nova-API-Version: 2.66" ...
+```
+2. Use ISO 8601 format: `2026-03-15T00:00:00`
+3. Verify the timestamp is in UTC
+</Accordion>
+
+<Accordion title="Search Returns Empty Results">
+**Symptom:** Search queries return no results despite known matching data.
+
+**Resolution:**
+1. Verify the correct project scope — non-admin users only see their own project's data
+2. Check that the instance or resource has not been deleted (deleted resources may not appear in listings)
+3. For date-based searches, ensure timestamps are in UTC and use ISO 8601 format
+4. Try broadening the search window or removing filters to confirm data exists
+</Accordion>

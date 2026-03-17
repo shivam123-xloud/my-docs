@@ -1,0 +1,710 @@
+---
+title: "DNS Integration"
+description: "Integrate the Xloud hypervisor with external DNS providers to automate DNS record creation during VM provisioning — supporting Infoblox, Microsoft DNS, BlueCat, SolarWinds, and other DNS platforms."
+---
+
+## Overview
+
+The Xloud hypervisor supports integration with both internal and external DNS providers to **automatically create, update, and delete DNS records** during the VM provisioning lifecycle. When a VM is created, the platform generates A, AAAA, and PTR records in the configured DNS service — eliminating manual DNS management.
+
+<CardGroup cols={3}>
+  <Card title="Automated Provisioning" icon="wand-magic-sparkles">
+DNS records are created automatically when a VM is launched and removed when the VM is deleted — no manual intervention required.
+  </Card>
+  <Card title="External DNS Providers" icon="globe">
+Integrates with enterprise DNS platforms including Infoblox, Microsoft DNS, BlueCat, SolarWinds, and any DNSSEC/TSIG-compatible provider.
+  </Card>
+  <Card title="Multi-Domain Support" icon="sitemap">
+Assign DNS domains at the network, port, or floating IP level for flexible record management across multiple zones.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture / Concepts
+
+### How DNS Integration Works
+
+The Xloud Network service manages DNS attributes on three resource types:
+
+| Resource | `dns_name` | `dns_domain` | Description |
+|---|---|---|---|
+| **Ports** | Yes | Yes | DNS name assigned to the VM's network port |
+| **Networks** | No | Yes | Default domain for all ports on this network |
+| **Floating IPs** | Yes | Yes | DNS name for externally routable addresses |
+
+When a VM is provisioned:
+
+1. The Compute service sanitizes the VM name and sets it as `dns_name` on the port (e.g., `my_vm` → `my-vm`)
+2. The Network service combines `dns_name` with `dns_domain` to form the FQDN
+3. The DNS driver creates A/AAAA records in the configured DNS service
+4. If reverse DNS is enabled, PTR records are created in the appropriate reverse zone
+5. On VM deletion, all associated DNS records are automatically removed
+
+### DNS Record Types
+
+| Record | Description | Example |
+|---|---|---|
+| **A** | Maps hostname to IPv4 address | `web-01.cloud.xloud.com → 10.0.1.15` |
+| **AAAA** | Maps hostname to IPv6 address | `web-01.cloud.xloud.com → 2001:db8::15` |
+| **PTR** | Reverse lookup — IP to hostname | `15.1.0.10.in-addr.arpa → web-01.cloud.xloud.com` |
+
+### DNS Domain Priority
+
+When multiple DNS domains are configured, the following priority order applies:
+
+```
+Port dns_domain  →  Network dns_domain  →  Global dns_domain (neutron.conf)
+   (highest)                                      (lowest)
+```
+
+### FQDN Construction
+
+```
+dns_name (from port/VM) + dns_domain (from port/network/global) = FQDN
+
+Example: "web-01" + "cloud.xloud.com." = "web-01.cloud.xloud.com."
+```
+
+### Supported External DNS Providers
+
+The Xloud hypervisor supports integration with external DNS providers through a pluggable driver architecture:
+
+| Provider | Integration Method | Description |
+|---|---|---|
+| **Xloud DNS (Designate)** | Native driver | Built-in Xloud DNS-as-a-Service with full API integration |
+| **Infoblox** | WAPI driver / IPAM plugin | Enterprise DDI — DNS, DHCP, and IPAM automation |
+| **Microsoft DNS** | PowerDNS / custom driver | Active Directory-integrated DNS with dynamic updates |
+| **BlueCat** | REST API driver | BlueCat Address Manager with DNS automation |
+| **SolarWinds** | IPAM integration | SolarWinds IP Address Manager with DNS sync |
+| **BIND / PowerDNS** | RFC 2136 (TSIG/GSS-TSIG) | Standard dynamic DNS update protocol |
+| **Any DNSSEC Provider** | Custom driver | Pluggable via `neutron.services.external_dns_drivers` namespace |
+
+<Info>
+  The driver architecture is extensible. Any DNS provider with an API or RFC 2136 support can be integrated through a custom external DNS driver plugin.
+</Info>
+
+---
+
+## Prerequisites
+
+- Xloud Network service (Neutron) deployed with ML2 plugin
+- DNS domain configured (must not be the default `openstacklocal`)
+- For external DNS: target DNS service accessible from the Network service host
+- For Xloud DNS (Designate): DNS service deployed with zones pre-configured
+- For Infoblox: NIOS appliance or virtual appliance with WAPI enabled
+- For Microsoft DNS: DNS server with dynamic update permissions configured
+- For reverse DNS: appropriate reverse zones created in the DNS service
+- Administrative access to Network service configuration files
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Enable DNS on a Network">
+Navigate to **Admin** → **Network** → **Networks** → Select a network → **Edit Network**.
+
+Set **DNS Domain** to the desired domain (e.g., `cloud.xloud.com.`).
+
+        <Warning>
+The DNS domain must end with a trailing period (`.`). Example: `cloud.xloud.com.` — not `cloud.xloud.com`.
+        </Warning>
+      </Step>
+
+      <Step title="Create VM with DNS Name">
+Navigate to **Project** → **Compute** → **Instances** → **Launch Instance**.
+
+The VM name is automatically used as the DNS name. For example, a VM named `web-server-01` creates the record `web-server-01.cloud.xloud.com`.
+
+        <Note>
+The Compute service sanitizes the VM name for DNS compatibility — underscores are replaced with hyphens, and the name is lowercased.
+        </Note>
+      </Step>
+
+      <Step title="Create Port with Custom DNS Name">
+Navigate to **Project** → **Network** → **Ports** → **Create Port**.
+
+- **Network** — Select the target network
+- **DNS Name** — Enter the desired hostname (e.g., `db-primary`)
+- **DNS Domain** — Optionally override the network's domain
+
+Click **Create**.
+      </Step>
+
+      <Step title="Create Floating IP with DNS">
+Navigate to **Project** → **Network** → **Floating IPs** → **Allocate IP to Project**.
+
+- **DNS Name** — Enter the public-facing hostname
+- **DNS Domain** — Enter the external DNS domain
+
+Associate the floating IP with a VM to publish the record.
+      </Step>
+
+      <Step title="Verify DNS Records">
+After VM creation, check the port details:
+
+Navigate to **Network** → **Ports** → Select the port.
+
+The **DNS Assignment** field displays the FQDN, hostname, and associated IP address.
+      </Step>
+    </Steps>
+
+    <Note>
+Backend DNS driver configuration is not available through the GUI. Use **Xdeploy** or CLI to configure the DNS driver on the Network service nodes.
+    </Note>
+  </Tab>
+
+  <Tab title="CLI">
+
+### Step 1: Enable Internal DNS
+
+    <Steps>
+      <Step title="Configure Global DNS Domain">
+Edit the Network service configuration:
+```bash
+vi /etc/neutron/neutron.conf
+```
+
+```ini
+[DEFAULT]
+dns_domain = cloud.xloud.com.
+```
+
+        <Warning>
+The domain must end with a trailing period and must **not** be `openstacklocal` (the default). Internal DNS is disabled when the default is used.
+        </Warning>
+      </Step>
+
+      <Step title="Enable DNS Extension Drivers">
+Edit the ML2 plugin configuration:
+```bash
+vi /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+
+Choose the appropriate extension driver:
+
+        <CodeGroup>
+```ini Basic DNS Integration
+[ml2]
+extension_drivers = port_security, dns
+```
+
+```ini DNS with Per-Port Domain Support
+[ml2]
+extension_drivers = port_security, dns_domain_ports
+```
+
+```ini Full DNS Feature Set
+[ml2]
+extension_drivers = port_security, dns_domain_ports, subnet_dns_publish_fixed_ip
+```
+        </CodeGroup>
+
+| Extension Driver | Feature |
+|---|---|
+| `dns` | Basic DNS integration — `dns_name` on ports |
+| `dns_domain_ports` | Per-port `dns_domain` override (includes basic DNS) |
+| `subnet_dns_publish_fixed_ip` | Per-subnet control over fixed IP DNS publication |
+| `dns_domain_keywords` | Keyword-based DNS domain assignment |
+      </Step>
+
+      <Step title="Restart Network Service">
+```bash
+systemctl restart neutron-server
+```
+      </Step>
+    </Steps>
+
+### Step 2: Configure External DNS Provider
+
+    <Steps>
+      <Step title="Set External DNS Driver">
+```bash
+vi /etc/neutron/neutron.conf
+```
+
+        <CodeGroup>
+```ini Xloud DNS (Designate)
+[DEFAULT]
+external_dns_driver = designate
+
+[designate]
+url = https://dns.xloud.local:9001/v2
+auth_type = password
+auth_url = https://identity.xloud.local:5000/v3
+username = neutron-dns
+password = <service-password>
+project_name = services
+project_domain_name = Default
+user_domain_name = Default
+region_name = RegionOne
+allow_reverse_dns_lookup = true
+ipv4_ptr_zone_prefix_size = 24
+ipv6_ptr_zone_prefix_size = 116
+ptr_zone_email = dns-admin@xloud.com
+```
+
+```ini Infoblox
+[DEFAULT]
+external_dns_driver = infoblox
+
+[infoblox]
+grid_master_host = infoblox.xloud.local
+grid_master_name = xloud-grid
+admin_user_name = xloud-api
+admin_password = <infoblox-password>
+wapi_version = 2.5
+wapi_max_results = 1000
+ssl_verify = true
+default_network_view = default
+default_dns_view = default
+dns_zone = cloud.xloud.com
+```
+
+```ini Microsoft DNS (via RFC 2136)
+[DEFAULT]
+external_dns_driver = rfc2136
+
+[rfc2136]
+dns_server = msdns.xloud.local
+dns_port = 53
+tsig_key_name = xloud-update-key
+tsig_key_secret = <base64-tsig-key>
+tsig_key_algorithm = hmac-sha256
+dns_zone = cloud.xloud.com
+```
+
+```ini BlueCat
+[DEFAULT]
+external_dns_driver = bluecat
+
+[bluecat]
+bam_address = bluecat.xloud.local
+bam_api_user = xloud-api
+bam_api_pass = <bluecat-password>
+dns_configuration = xloud-config
+dns_view = default
+dns_zone = cloud.xloud.com
+```
+
+```ini Custom / Generic DNS Provider
+[DEFAULT]
+# Any provider with a compatible driver in the
+# neutron.services.external_dns_drivers namespace
+external_dns_driver = <driver-name>
+```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Configure Reverse DNS (Optional)">
+For Xloud DNS (Designate), enable PTR record creation:
+```ini
+[designate]
+allow_reverse_dns_lookup = true
+ipv4_ptr_zone_prefix_size = 24
+ipv6_ptr_zone_prefix_size = 116
+ptr_zone_email = dns-admin@xloud.com
+```
+
+Ensure reverse zones exist in the DNS service:
+```bash
+xloud zone create --email dns-admin@xloud.com 1.0.10.in-addr.arpa.
+```
+      </Step>
+
+      <Step title="Restart Network Service">
+```bash
+systemctl restart neutron-server
+```
+      </Step>
+    </Steps>
+
+### Step 3: Configure Networks and Provision VMs
+
+    <Steps>
+      <Step title="Set DNS Domain on Network">
+```bash
+xloud network set --dns-domain cloud.xloud.com. my-network
+```
+All VMs on this network will have DNS records created under `cloud.xloud.com`.
+      </Step>
+
+      <Step title="Create VM (Automatic DNS Record)">
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --network my-network \
+  web-server-01
+```
+Automatically creates:
+
+- `A` record: `web-server-01.cloud.xloud.com → <assigned-ip>`
+- `PTR` record (if enabled): `<ip>.in-addr.arpa → web-server-01.cloud.xloud.com`
+      </Step>
+
+      <Step title="Create Port with Custom DNS Name">
+```bash
+xloud port create \
+  --network my-network \
+  --dns-name db-primary \
+  db-port
+```
+Creates: `db-primary.cloud.xloud.com → <port-ip>`
+      </Step>
+
+      <Step title="Create Port with Per-Port DNS Domain">
+```bash
+xloud port create \
+  --network my-network \
+  --dns-name app-01 \
+  --dns-domain internal.xloud.com. \
+  app-port
+```
+Creates: `app-01.internal.xloud.com → <port-ip>`
+
+        <Info>
+Per-port `dns_domain` requires the `dns_domain_ports` extension driver. The port domain takes precedence over the network domain.
+        </Info>
+      </Step>
+
+      <Step title="Create Floating IP with DNS">
+```bash
+xloud floating ip create \
+  --dns-name web-server-01 \
+  --dns-domain public.xloud.com. \
+  external-network
+```
+Creates: `web-server-01.public.xloud.com → <floating-ip>`
+
+Associate with a VM:
+```bash
+xloud server add floating ip web-server-01 <floating-ip>
+```
+
+        <Note>
+Floating IP DNS attributes (`dns_name` and `dns_domain`) must be set during creation and cannot be modified afterward. They take precedence over port/network DNS attributes.
+        </Note>
+      </Step>
+
+      <Step title="Enable Per-Subnet DNS Publication">
+For dual-stack deployments, control which subnets publish DNS records:
+```bash
+# Publish IPv6 fixed IPs only (IPv4 uses NAT with floating IPs)
+xloud subnet set --dns-publish-fixed-ip my-v6-subnet
+```
+Requires the `subnet_dns_publish_fixed_ip` extension driver.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## DNS Record Lifecycle
+
+| VM Event | DNS Action |
+|---|---|
+| **VM Created** | A/AAAA record created from `dns_name` + `dns_domain` |
+| **Floating IP Associated** | A record created for the floating IP's FQDN |
+| **Floating IP Disassociated** | A record for the floating IP is removed |
+| **VM Deleted** | All associated A/AAAA/PTR records are removed |
+| **Port Deleted** | Associated DNS records are removed |
+| **Port Updated** | DNS records are updated to reflect new attributes |
+
+<Tip>
+  DNS record creation and deletion is fully automated. No manual DNS management is required after initial configuration.
+</Tip>
+
+---
+
+## Use Cases
+
+<Accordion title="Use Case 1: Floating IP DNS via Port Attributes">
+
+DNS records for floating IPs are derived from the associated port's `dns_name` and the network's `dns_domain`.
+
+```bash
+# 1. Set network domain
+xloud network set --dns-domain cloud.xloud.com. my-network
+
+# 2. Create VM (port gets dns_name automatically)
+xloud server create --flavor m1.medium --image ubuntu-22.04 \
+  --network my-network web-01
+
+# 3. Create and associate floating IP
+xloud floating ip create external-net
+xloud server add floating ip web-01 <floating-ip>
+```
+
+**Result:** `web-01.cloud.xloud.com → <floating-ip-address>`
+
+The record is created when the floating IP is associated and removed when disassociated.
+
+</Accordion>
+
+<Accordion title="Use Case 2: Floating IP with Direct DNS Attributes">
+
+Assign DNS attributes directly to the floating IP for independent naming.
+
+```bash
+xloud floating ip create \
+  --dns-name api-gateway \
+  --dns-domain services.xloud.com. \
+  external-net
+```
+
+**Result:** `api-gateway.services.xloud.com → <floating-ip>` — created immediately, regardless of association.
+
+<Warning>
+  Direct floating IP DNS attributes cannot be modified after creation. Plan the naming carefully.
+</Warning>
+
+</Accordion>
+
+<Accordion title="Use Case 3: Fixed IP Publication for Externally Accessible Networks">
+
+Publish fixed IP DNS records directly (without floating IPs) for networks with direct external access.
+
+```bash
+# Set network domain
+xloud network set --dns-domain direct.xloud.com. ext-network
+
+# Create port with DNS name
+xloud port create --network ext-network --dns-name backend-01 direct-port
+
+# Or create VM directly
+xloud server create --flavor m1.medium --image ubuntu-22.04 \
+  --network ext-network backend-01
+```
+
+**Result:** `backend-01.direct.xloud.com → <fixed-ip>`
+
+</Accordion>
+
+<Accordion title="Use Case 4: Multi-Domain Deployment">
+
+Assign different DNS domains to different networks or ports for organizational separation.
+
+```bash
+# Production network
+xloud network set --dns-domain prod.xloud.com. prod-network
+
+# Staging network
+xloud network set --dns-domain staging.xloud.com. staging-network
+
+# VM in production
+xloud server create --flavor m1.large --image ubuntu-22.04 \
+  --network prod-network api-server
+
+# VM in staging
+xloud server create --flavor m1.small --image ubuntu-22.04 \
+  --network staging-network api-server
+```
+
+**Result:**
+- `api-server.prod.xloud.com → 10.0.1.15`
+- `api-server.staging.xloud.com → 10.1.1.15`
+
+</Accordion>
+
+---
+
+## Extension Driver Reference
+
+| Extension Driver | Configuration Key | Feature |
+|---|---|---|
+| `dns` | `extension_drivers = dns` | Basic DNS — `dns_name` attribute on ports |
+| `dns_domain_ports` | `extension_drivers = dns_domain_ports` | Per-port `dns_domain` override (includes basic DNS) |
+| `subnet_dns_publish_fixed_ip` | `extension_drivers = subnet_dns_publish_fixed_ip` | Per-subnet control over fixed IP publication |
+| `dns_domain_keywords` | `extension_drivers = dns_domain_keywords` | Keyword-based dynamic DNS domain assignment |
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify DNS Extension is Loaded">
+```bash
+xloud extension list --network | grep dns
+```
+Confirm `dns-integration` and/or `dns-domain-ports` extensions appear.
+  </Step>
+
+  <Step title="Verify Network DNS Domain">
+```bash
+xloud network show my-network -c dns_domain
+```
+Confirm the domain is set and ends with a period.
+  </Step>
+
+  <Step title="Verify Port DNS Assignment">
+After creating a VM or port:
+```bash
+xloud port show <port-id> -c dns_name -c dns_domain -c dns_assignment
+```
+The `dns_assignment` field should display the FQDN, hostname, and IP address:
+```
+fqdn='web-01.cloud.xloud.com.', hostname='web-01', ip_address='10.0.1.15'
+```
+  </Step>
+
+  <Step title="Verify DNS Record in External Service">
+Query the DNS service to confirm the record exists:
+```bash
+# Using dig
+dig web-01.cloud.xloud.com @dns-server.xloud.local
+
+# Using nslookup
+nslookup web-01.cloud.xloud.com dns-server.xloud.local
+
+# Using Xloud DNS (Designate)
+xloud recordset list cloud.xloud.com.
+```
+  </Step>
+
+  <Step title="Verify Reverse DNS (PTR)">
+```bash
+dig -x 10.0.1.15 @dns-server.xloud.local
+```
+Should return `web-01.cloud.xloud.com.`
+  </Step>
+
+  <Step title="Verify Record Deletion">
+Delete the VM and confirm DNS records are removed:
+```bash
+xloud server delete web-01
+dig web-01.cloud.xloud.com @dns-server.xloud.local
+```
+Should return `NXDOMAIN` (no record found).
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Per-Network Domains" icon="sitemap">
+Assign distinct `dns_domain` values to different networks (production, staging, development) for clean DNS namespace separation.
+  </Card>
+  <Card title="Enable Reverse DNS" icon="rotate-left">
+Configure PTR records for compliance and email deliverability. Set appropriate zone prefix sizes for the IP address scheme.
+  </Card>
+  <Card title="Pre-Create DNS Zones" icon="folder-plus">
+Ensure all DNS zones (forward and reverse) exist in the external DNS service before enabling integration. Missing zones cause provisioning failures.
+  </Card>
+  <Card title="Use Meaningful VM Names" icon="tag">
+VM names become DNS hostnames. Use descriptive, DNS-compatible names (lowercase, hyphens, no underscores) to avoid sanitization surprises.
+  </Card>
+  <Card title="Secure DNS Updates" icon="lock">
+For RFC 2136 integrations (Microsoft DNS, BIND), use TSIG or GSS-TSIG authentication to secure dynamic updates. Never allow unauthenticated updates.
+  </Card>
+  <Card title="Monitor DNS Propagation" icon="clock">
+Account for DNS TTL and propagation delays. Set appropriate TTL values in the DNS zone for the expected rate of VM provisioning and deletion.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="DNS Records Not Created After VM Launch">
+  **Symptom:** VM is created successfully but no DNS record appears.
+
+  **Resolution:**
+  1. Verify `dns_domain` is set in `neutron.conf` and is not `openstacklocal`:
+```bash
+grep dns_domain /etc/neutron/neutron.conf
+```
+  2. Verify the DNS extension driver is loaded:
+```bash
+grep extension_drivers /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+  3. Verify the network has a `dns_domain` set:
+```bash
+xloud network show <network> -c dns_domain
+```
+  4. Check the port's `dns_assignment`:
+```bash
+xloud port show <port-id> -c dns_assignment
+```
+  5. For external DNS, verify the `external_dns_driver` is configured and the service is reachable
+  6. Review Network service logs: `journalctl -u neutron-server --grep dns`
+</Accordion>
+
+<Accordion title="External DNS Driver Connection Fails">
+  **Symptom:** Neutron logs show connection errors to the external DNS service.
+
+  **Resolution:**
+  1. Verify network connectivity to the DNS service:
+```bash
+curl -k https://dns.xloud.local:9001/v2/zones  # Designate
+curl -k https://infoblox.xloud.local/wapi/v2.5/zone_auth  # Infoblox
+```
+  2. Verify credentials in `neutron.conf` are correct
+  3. Check SSL/TLS certificate configuration (`cafile`, `ssl_verify`)
+  4. Ensure the service account has permissions to create/delete records
+  5. Restart: `systemctl restart neutron-server`
+</Accordion>
+
+<Accordion title="DNS Name Contains Underscores">
+  **Symptom:** VM name uses underscores (e.g., `my_server`) and DNS record is unexpected.
+
+  **Resolution:**
+  - The Compute service automatically sanitizes VM names: underscores (`_`) are replaced with hyphens (`-`)
+  - `my_server` becomes `my-server` in DNS
+  - Use DNS-compatible names (lowercase, hyphens only) when creating VMs to avoid confusion
+</Accordion>
+
+<Accordion title="Floating IP DNS Not Working">
+  **Symptom:** Floating IP is associated but no external DNS record is created.
+
+  **Resolution:**
+  1. Verify an external DNS driver is configured:
+```bash
+grep external_dns_driver /etc/neutron/neutron.conf
+```
+  2. For Use Case 1 (port-based): verify the network has `dns_domain` set and the port has `dns_name`
+  3. For Use Case 2 (direct): verify `dns_name` and `dns_domain` were set during floating IP creation (cannot be added afterward)
+  4. Check that the DNS zone exists in the external service
+  5. Review logs: `journalctl -u neutron-server --grep designate`
+</Accordion>
+
+<Accordion title="PTR Records Not Created">
+  **Symptom:** Forward (A) records are created but reverse (PTR) records are missing.
+
+  **Resolution:**
+  1. Verify reverse DNS is enabled:
+```ini
+[designate]
+allow_reverse_dns_lookup = true
+```
+  2. Verify the reverse zone exists:
+```bash
+xloud zone list | grep in-addr.arpa
+```
+  3. Check the prefix size matches the network:
+```ini
+ipv4_ptr_zone_prefix_size = 24  # for /24 networks
+```
+  4. Verify `ptr_zone_email` is set — it is required for automatic reverse zone creation
+  5. Restart: `systemctl restart neutron-server`
+</Accordion>
+
+<Accordion title="Per-Port DNS Domain Not Working">
+  **Symptom:** Port-level `dns_domain` is ignored; records go to the network domain.
+
+  **Resolution:**
+  1. Verify the `dns_domain_ports` extension driver is enabled (not just `dns`):
+```ini
+[ml2]
+extension_drivers = port_security, dns_domain_ports
+```
+  2. Verify the target zone exists in the DNS service
+  3. Restart: `systemctl restart neutron-server`
+  4. Create a new port — existing ports may not retroactively pick up the extension
+</Accordion>

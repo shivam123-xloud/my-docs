@@ -1,0 +1,302 @@
+---
+title: "License"
+description: "Xloud software licensing model — OEM licensed with all features enabled from Day 1, built on Apache 2.0 open source foundation with no per-socket, per-core, or per-VM licensing restrictions."
+---
+
+## Overview
+
+Xloud is delivered as a fully **OEM-licensed software platform** with all features enabled from Day 1. There is no feature gating, no tiered editions, and no incremental licensing — every capability documented in this product suite is available immediately upon deployment.
+
+<CardGroup cols={3}>
+  <Card title="All Features Included" icon="check-double">
+Every Xloud service — Compute, Network, Storage, Identity, Dashboard, Key Manager, DNS, Orchestration — is fully licensed and operational from Day 1.
+  </Card>
+  <Card title="No Per-Unit Licensing" icon="ban">
+No per-socket, per-core, per-VM, or per-host licensing. Scale infrastructure without incremental license costs.
+  </Card>
+  <Card title="Apache 2.0 Foundation" icon="scale-balanced">
+Built on Apache License 2.0 — the most permissive OSI-approved open source license, ensuring full commercial usage rights.
+  </Card>
+</CardGroup>
+
+---
+
+## Licensing Model
+
+### License Type
+
+| Aspect | Detail |
+|---|---|
+| **License** | OEM commercial license with Apache 2.0 open source foundation |
+| **Edition** | Single edition — all features included |
+| **Feature Gating** | None — all capabilities enabled from Day 1 |
+| **Pricing Model** | Subscription-based (not per-socket, per-core, or per-VM) |
+| **Scope** | All Xloud services, APIs, CLI tools, and Dashboard |
+| **Updates** | Included during subscription period |
+| **Support** | OEM support included with license |
+
+### What Is Included
+
+All software and licenses required for a complete Xloud deployment are included from Day 1:
+
+<Accordion title="Core Infrastructure Services">
+
+| Service | Description | Licensed |
+|---|---|---|
+| **Xloud Compute** | VM lifecycle management, scheduling, hypervisor management | Yes — Day 1 |
+| **Xloud Network** | SDN, DHCP, routing, floating IPs, security groups, DNS integration | Yes — Day 1 |
+| **Xloud Block Storage** | Persistent block volumes, snapshots, backups, replication | Yes — Day 1 |
+| **Xloud Image** | VM image registry, format conversion, image sharing | Yes — Day 1 |
+| **Xloud Identity** | Authentication, authorization, RBAC, LDAP/AD federation | Yes — Day 1 |
+| **Xloud Dashboard** | Web-based management console with full API coverage | Yes — Day 1 |
+
+</Accordion>
+
+<Accordion title="Advanced Services">
+
+| Service | Description | Licensed |
+|---|---|---|
+| **Xloud Key Manager** | Credential store — secrets, certificates, keypairs, HSM/Vault integration | Yes — Day 1 |
+| **Xloud DNS** | DNS-as-a-Service — automated record management, zone management | Yes — Day 1 |
+| **Xloud Load Balancer** | L4/L7 load balancing, health monitoring, TLS termination | Yes — Day 1 |
+| **Xloud Orchestration** | Infrastructure-as-Code, stack templates, auto-scaling | Yes — Day 1 |
+| **Xloud Shared Filesystem** | Managed NFS/CIFS file shares for VMs | Yes — Day 1 |
+| **Xloud Bare Metal** | Physical server provisioning and lifecycle management | Yes — Day 1 |
+| **Xloud Telemetry** | Metering, monitoring, alarming, usage tracking | Yes — Day 1 |
+
+</Accordion>
+
+<Accordion title="Management & Automation Tools">
+
+| Component | Description | Licensed |
+|---|---|---|
+| **Xloud CLI** | Unified command-line interface for all services | Yes — Day 1 |
+| **Xloud APIs** | Full REST APIs for every service with OpenAPI documentation | Yes — Day 1 |
+| **Cloud-Init / Cloudbase-Init** | VM bootstrapping automation (Linux/Windows) | Yes — Day 1 |
+| **IPAM** | IP address management with pluggable drivers | Yes — Day 1 |
+| **RBAC Policy Engine** | Fine-grained role-based access control | Yes — Day 1 |
+| **Xdeploy** | Deployment and lifecycle management tooling | Yes — Day 1 |
+
+</Accordion>
+
+### No Additional Licenses Required
+
+<Warning>
+  Xloud does **not** require separate licenses for:
+
+  - Hypervisor — included (no VMware, Hyper-V, or third-party hypervisor license needed)
+  - Database — uses included database services
+  - Message queue — uses included messaging infrastructure
+  - Load balancer — included as a platform service
+  - DNS service — included as a platform service
+  - Monitoring / telemetry — included as a platform service
+  - API gateway — included as part of the platform
+</Warning>
+
+---
+
+## Open Source Foundation
+
+### Apache License 2.0
+
+Xloud is built on an Apache License 2.0 (ASLv2) open source foundation — the most commercially permissive open source license.
+
+| License Aspect | Detail |
+|---|---|
+| **License** | Apache License, Version 2.0 |
+| **OSI Approved** | Yes |
+| **Commercial Use** | Unrestricted |
+| **Modification** | Permitted |
+| **Distribution** | Permitted |
+| **Patent Grant** | Included |
+| **Copyleft** | None — no obligation to open-source derivative works |
+
+### Compatible Licenses
+
+All Xloud components and dependencies use OSI-approved licenses:
+
+| License | Usage |
+|---|---|
+| **Apache 2.0** | Core services and libraries |
+| **MIT** | Supporting libraries |
+| **BSD 2-Clause / 3-Clause** | Supporting libraries |
+| **PSF** | Python-based components |
+| **LGPL** | Select system libraries |
+| **MPL** | Select components |
+
+<Info>
+  No GPL, GPLv3, or AGPL-licensed components are included in the Xloud production runtime. This ensures maximum commercial freedom with no copyleft obligations.
+</Info>
+
+---
+
+## Scaling Without License Constraints
+
+| Scaling Dimension | License Impact |
+|---|---|
+| Add compute hosts | No additional license required |
+| Add storage nodes | No additional license required |
+| Add network nodes | No additional license required |
+| Increase VM count | No per-VM license fee |
+| Add CPU sockets/cores | No per-socket or per-core fee |
+| Add users / projects | No per-user license fee |
+| Add availability zones | No per-zone fee |
+| Enable additional services | All services already licensed |
+
+<Tip>
+  Xloud's subscription model enables infrastructure scaling without license cost surprises. Budget for hardware and support — not software licenses.
+</Tip>
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Verify Licensed Services">
+Log in to the **Xloud Dashboard** → Navigate to **Admin** → **System** → **System Information**.
+
+The System Information panel displays all registered services and their endpoints. All listed services are fully licensed and operational.
+      </Step>
+      <Step title="Verify API Endpoints">
+Navigate to **Identity** → **Application Credentials** or use the API catalog.
+
+All service endpoints listed in the catalog are included in the license.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <Steps>
+      <Step title="List All Licensed Services">
+```bash
+xloud service list
+```
+
+All services returned are fully licensed. Example output:
+```
++-------------+----------------+------------------+
+| Name        | Type           | Description      |
++-------------+----------------+------------------+
+| nova        | compute        | Xloud Compute    |
+| neutron     | network        | Xloud Network    |
+| cinder      | volumev3       | Xloud Storage    |
+| glance      | image          | Xloud Image      |
+| keystone    | identity       | Xloud Identity   |
+| barbican    | key-manager    | Xloud Key Mgr    |
+| designate   | dns            | Xloud DNS        |
+| octavia     | load-balancer  | Xloud LB         |
+| heat        | orchestration  | Xloud Orch       |
++-------------+----------------+------------------+
+```
+      </Step>
+
+      <Step title="Verify Service Endpoints">
+```bash
+xloud endpoint list
+```
+Every endpoint in the catalog is covered by the license.
+      </Step>
+
+      <Step title="Verify Compute Capacity (No License Limits)">
+```bash
+# No VM count limits
+xloud hypervisor stats show
+
+# No host count limits
+xloud hypervisor list
+
+# No user count limits
+xloud user list
+```
+All resources are limited only by hardware capacity and configured quotas — not by licensing.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify All Services Are Active">
+```bash
+xloud service list -c Name -c Type
+```
+All Xloud services should be listed with registered endpoints.
+  </Step>
+
+  <Step title="Verify No Feature Restrictions">
+```bash
+# Compute features
+xloud server create --help  # All options available
+
+# Network features
+xloud network create --help  # All options available
+
+# Key Manager features
+xloud secret store --help  # All options available
+
+# DNS features
+xloud zone create --help  # All options available
+```
+All commands and options are available without feature gates.
+  </Step>
+
+  <Step title="Verify Unlimited Scaling">
+```bash
+# Check current utilization (no license cap)
+xloud hypervisor stats show
+xloud quota show <project-id>
+```
+Quotas are administrator-configured — not license-imposed.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Deploy All Services" icon="cubes">
+Since all services are licensed from Day 1, deploy the full suite to maximize platform value. Enable DNS, Key Manager, Load Balancer, and Telemetry alongside core services.
+  </Card>
+  <Card title="Plan for Growth" icon="chart-line">
+No license constraints on scaling. Size the initial deployment for current needs and expand compute, storage, and network nodes as demand grows.
+  </Card>
+  <Card title="Maintain Subscription" icon="calendar-check">
+Keep the subscription active to receive updates, security patches, and OEM support. Plan renewal timelines in advance.
+  </Card>
+  <Card title="Document Deployment" icon="file-lines">
+Maintain an inventory of deployed services and nodes. This simplifies support engagements and upgrade planning — not for license compliance.
+  </Card>
+</CardGroup>
+
+---
+
+## Frequently Asked Questions
+
+<Accordion title="Is there a separate license for the hypervisor?">
+  No. The Xloud hypervisor is included in the platform license. No third-party hypervisor license (VMware, Hyper-V) is required.
+</Accordion>
+
+<Accordion title="Are there per-VM or per-socket fees?">
+  No. Xloud uses a subscription model with no per-VM, per-socket, per-core, or per-host fees. Scale infrastructure without incremental license costs.
+</Accordion>
+
+<Accordion title="Are advanced features (Key Manager, DNS, Load Balancer) separately licensed?">
+  No. Every Xloud service is included in the base license and enabled from Day 1. There are no add-on modules or premium tiers.
+</Accordion>
+
+<Accordion title="What happens when the subscription expires?">
+  The software continues to operate. However, access to updates, security patches, and OEM support requires an active subscription.
+</Accordion>
+
+<Accordion title="Can the software be modified or customized?">
+  Yes. The Apache 2.0 license permits modification, customization, and integration without obligation to open-source derivative works.
+</Accordion>
+
+<Accordion title="Are there restrictions on the number of users or projects?">
+  No. User and project counts are limited only by administrator-configured quotas — not by licensing.
+</Accordion>

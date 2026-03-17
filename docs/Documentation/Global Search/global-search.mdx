@@ -1,0 +1,728 @@
+---
+title: "Global Search"
+description: "Xloud provides global search capabilities to find instances, users, clouds, groups, hosts, and networks with comprehensive filtering, sorting, and pagination."
+---
+
+## Overview
+
+The Xloud hypervisor management engine provides a **global search** facility across all major resource types. Administrators and project users can search and filter instances, users, groups, hosts, networks, and cloud resources using extensive query parameters — enabling rapid discovery of any resource in the environment.
+
+<CardGroup cols={3}>
+  <Card title="Instance Search" icon="server">
+Search VMs by name, status, IP, flavor, image, tags, host, user, project, availability zone, and 40+ filters.
+  </Card>
+  <Card title="Identity Search" icon="users">
+Find users, groups, and projects by name, domain, status, and tags with partial match support.
+  </Card>
+  <Card title="Infrastructure Search" icon="network-wired">
+Search hosts, hypervisors, networks, subnets, ports, and routers by name, status, and attributes.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture / Concepts
+
+### Searchable Resource Types
+
+| Resource | Service | Search Scope |
+|---|---|---|
+| **Instances (VMs)** | Compute | Name, status, IP, flavor, image, tags, host, user, project, AZ, state, timestamps |
+| **Users** | Identity | Name, domain, enabled status, password expiry |
+| **Groups** | Identity | Name, domain |
+| **Projects (Clouds)** | Identity | Name, domain, enabled status, parent, tags |
+| **Hosts / Hypervisors** | Compute | Hostname, status, state, type |
+| **Networks** | Network | Name, status, type, shared, external, tags |
+| **Subnets** | Network | CIDR, network, IP version, gateway, DHCP |
+| **Ports** | Network | Status, device, network, IP address, MAC |
+| **Routers** | Network | Name, status, external gateway, project |
+| **Floating IPs** | Network | Status, floating IP, fixed IP, port, project |
+
+### Search Capabilities
+
+| Feature | Description |
+|---|---|
+| **Regex Matching** | Instance name search supports regular expressions |
+| **Inexact Filtering** | String attributes support partial match (Identity API 3.2+) |
+| **Tag Filtering** | Boolean tag operators: AND, OR, NOT AND, NOT OR |
+| **Time-Range Queries** | Filter by `changes-since` / `changes-before` timestamps |
+| **Cross-Project Search** | Admin users can search across all projects |
+| **Sorting** | Sort results by any supported attribute (ascending/descending) |
+| **Pagination** | `limit` and `marker` parameters for large result sets |
+
+---
+
+## Prerequisites
+
+- Xloud Compute, Identity, and Network services operational
+- Authenticated user with appropriate role:
+  - `reader` or higher for project-scoped searches
+  - `admin` for cross-project and infrastructure searches
+- API microversion 2.83+ recommended for broadest filter access
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+
+### Dashboard Global Search
+
+    <Steps>
+      <Step title="Search Instances">
+Navigate to **Project** → **Compute** → **Instances**.
+
+Use the **search bar** at the top of the instance table. Filter by:
+
+- **Name** — Instance name (partial match)
+- **Status** — Active, Shutoff, Error, etc.
+- **Image** — Source image
+- **Flavor** — Resource configuration
+- **Availability Zone** — Target zone
+
+Click column headers to sort by any attribute.
+      </Step>
+
+      <Step title="Search All Instances (Admin)">
+Navigate to **Admin** → **Compute** → **Instances**.
+
+Additional filters available:
+
+- **Project** — Filter by owning project
+- **Host** — Filter by hypervisor host
+- **All Projects** toggle for cross-project search
+      </Step>
+
+      <Step title="Search Users & Groups">
+Navigate to **Identity** → **Users** or **Identity** → **Groups**.
+
+Use the search bar to filter by name. Click column headers to sort by name, email, domain, or enabled status.
+      </Step>
+
+      <Step title="Search Projects (Clouds)">
+Navigate to **Identity** → **Projects**.
+
+Filter by project name, domain, or enabled status.
+      </Step>
+
+      <Step title="Search Hosts / Hypervisors">
+Navigate to **Admin** → **Compute** → **Hypervisors**.
+
+View all hosts with status, state, vCPU/RAM/disk utilization. Use browser search or column sorting to locate specific hosts.
+      </Step>
+
+      <Step title="Search Networks">
+Navigate to **Project** → **Network** → **Networks** or **Admin** → **Network** → **Networks**.
+
+Filter by name, status, shared, external, or admin state. Admin view shows networks across all projects.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+### Instance Search
+
+    <Steps>
+      <Step title="Search by Name (Regex Supported)">
+```bash
+# Exact name
+xloud server list --name web-01
+
+# Regex pattern
+xloud server list --name "^web-.*"
+
+# Partial match
+xloud server list --name "database"
+```
+      </Step>
+
+      <Step title="Search by Status">
+```bash
+xloud server list --status ACTIVE
+xloud server list --status ERROR
+xloud server list --status SHUTOFF
+xloud server list --status SHELVED
+```
+      </Step>
+
+      <Step title="Search by IP Address">
+```bash
+# IPv4
+xloud server list --ip 10.0.1.15
+
+# IPv6
+xloud server list --ip6 2001:db8::15
+```
+      </Step>
+
+      <Step title="Search by Flavor / Image">
+```bash
+xloud server list --flavor <flavor-id>
+xloud server list --image <image-id>
+```
+      </Step>
+
+      <Step title="Search by Tags">
+```bash
+# All tags (AND)
+xloud server list --tags production,web-tier
+
+# Any tag (OR)
+xloud server list --tags-any production,staging
+
+# Exclude tags (NOT AND)
+xloud server list --not-tags decommissioned
+
+# Exclude any tag (NOT OR)
+xloud server list --not-tags-any test,dev
+```
+      </Step>
+
+      <Step title="Search by Time Range">
+```bash
+# Changed after timestamp
+xloud server list --changes-since 2026-03-15T00:00:00
+
+# Changed before timestamp
+xloud server list --changes-before 2026-03-17T23:59:59
+```
+      </Step>
+
+      <Step title="Search by Host (Admin)">
+```bash
+xloud server list --host compute-node-01
+xloud server list --all-projects --host compute-node-01
+```
+      </Step>
+
+      <Step title="Search by User / Project (Admin)">
+```bash
+# By user
+xloud server list --user <user-id> --all-projects
+
+# By project
+xloud server list --project <project-id>
+
+# All projects
+xloud server list --all-projects
+```
+      </Step>
+
+      <Step title="Search by Availability Zone">
+```bash
+xloud server list --availability-zone az-1
+```
+      </Step>
+
+      <Step title="Search by Lock Status">
+```bash
+xloud server list --locked true
+xloud server list --locked false
+```
+      </Step>
+
+      <Step title="Combined Search with Sorting">
+```bash
+xloud server list \
+  --status ACTIVE \
+  --tags production \
+  --availability-zone az-1 \
+  --sort-column Name \
+  --sort-ascending
+```
+      </Step>
+    </Steps>
+
+### User & Group Search
+
+    <Steps>
+      <Step title="Search Users">
+```bash
+# List all users
+xloud user list
+
+# Search by name
+xloud user list --name admin
+
+# Search by domain
+xloud user list --domain Default
+
+# Search by enabled status
+xloud user list --enable
+
+# Show specific user
+xloud user show <user-name-or-id>
+```
+      </Step>
+
+      <Step title="Search Groups">
+```bash
+# List all groups
+xloud group list
+
+# Search by name
+xloud group list --name developers
+
+# Search by domain
+xloud group list --domain Default
+
+# List users in a group
+xloud user list --group <group-id>
+
+# Show specific group
+xloud group show <group-name-or-id>
+```
+      </Step>
+    </Steps>
+
+### Project (Cloud) Search
+
+    <Steps>
+      <Step title="Search Projects">
+```bash
+# List all projects
+xloud project list
+
+# Search by name
+xloud project list --name production
+
+# Search by domain
+xloud project list --domain Default
+
+# Search by enabled status
+xloud project list --enable
+
+# Search by tags
+xloud project list --tags tier:gold
+
+# Show project details
+xloud project show <project-name-or-id>
+```
+      </Step>
+    </Steps>
+
+### Host / Hypervisor Search
+
+    <Steps>
+      <Step title="Search Hypervisors">
+```bash
+# List all hypervisors
+xloud hypervisor list
+
+# List with full details
+xloud hypervisor list --long
+
+# Search by hostname pattern
+xloud hypervisor list --matching-host "compute-*"
+
+# Show specific hypervisor
+xloud hypervisor show <hypervisor-id>
+
+# List VMs on a hypervisor
+xloud server list --host <hostname> --all-projects
+
+# Show hypervisor uptime
+xloud hypervisor show <hypervisor-id> -c uptime
+```
+      </Step>
+
+      <Step title="Search Compute Services">
+```bash
+# List all services
+xloud compute service list
+
+# Filter by host
+xloud compute service list --host compute-node-01
+
+# Filter by service type
+xloud compute service list --service nova-compute
+```
+      </Step>
+    </Steps>
+
+### Network Search
+
+    <Steps>
+      <Step title="Search Networks">
+```bash
+# List all networks
+xloud network list
+
+# Search by name
+xloud network list --name prod-network
+
+# Search by status
+xloud network list --status ACTIVE
+
+# External networks only
+xloud network list --external
+
+# Shared networks
+xloud network list --share
+
+# Search by tags
+xloud network list --tags production
+
+# All projects (admin)
+xloud network list --project <project-id>
+
+# Show network details
+xloud network show <network-name-or-id>
+```
+      </Step>
+
+      <Step title="Search Subnets">
+```bash
+# List all subnets
+xloud subnet list
+
+# Search by network
+xloud subnet list --network <network-id>
+
+# Search by IP version
+xloud subnet list --ip-version 4
+
+# Search by subnet pool
+xloud subnet list --subnet-pool <pool-id>
+
+# Search by DHCP status
+xloud subnet list --dhcp
+xloud subnet list --no-dhcp
+```
+      </Step>
+
+      <Step title="Search Ports">
+```bash
+# List all ports
+xloud port list
+
+# Search by server
+xloud port list --server <server-id>
+
+# Search by network
+xloud port list --network <network-id>
+
+# Search by fixed IP
+xloud port list --fixed-ip ip-address=10.0.1.15
+
+# Search by MAC address
+xloud port list --mac-address fa:16:3e:xx:xx:xx
+
+# Search by status
+xloud port list --status ACTIVE
+```
+      </Step>
+
+      <Step title="Search Routers">
+```bash
+# List all routers
+xloud router list
+
+# Search by name
+xloud router list --name prod-router
+
+# Search by status
+xloud router list --status ACTIVE
+
+# Search by project (admin)
+xloud router list --project <project-id>
+```
+      </Step>
+
+      <Step title="Search Floating IPs">
+```bash
+# List all floating IPs
+xloud floating ip list
+
+# Search by status
+xloud floating ip list --status ACTIVE
+xloud floating ip list --status DOWN
+
+# Search by floating IP address
+xloud floating ip list --floating-ip-address 203.0.113.50
+
+# Search by fixed IP
+xloud floating ip list --fixed-ip-address 10.0.1.15
+
+# Search by project (admin)
+xloud floating ip list --project <project-id>
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Instance Search Filter Reference
+
+### General Filters (All Users)
+
+| Filter | Description | Example |
+|---|---|---|
+| `--name` | Name (regex supported) | `--name "^web-.*"` |
+| `--status` | VM status | `--status ACTIVE` |
+| `--flavor` | Flavor UUID | `--flavor <id>` |
+| `--image` | Image UUID | `--image <id>` |
+| `--ip` | IPv4 address | `--ip 10.0.1.15` |
+| `--ip6` | IPv6 address | `--ip6 2001:db8::15` |
+| `--tags` | All tags match (AND) | `--tags prod,web` |
+| `--tags-any` | Any tag matches (OR) | `--tags-any prod,staging` |
+| `--not-tags` | Exclude all tags (NOT AND) | `--not-tags decomm` |
+| `--not-tags-any` | Exclude any tag (NOT OR) | `--not-tags-any test,dev` |
+| `--changes-since` | Changed after timestamp | `--changes-since 2026-03-15T00:00:00` |
+| `--changes-before` | Changed before timestamp | `--changes-before 2026-03-17T23:59:59` |
+| `--locked` | Lock status (2.73+) | `--locked true` |
+| `--availability-zone` | Availability zone (2.83+) | `--availability-zone az-1` |
+| `--key-name` | SSH keypair name (2.83+) | `--key-name my-key` |
+| `--reservation-id` | Batch creation ID | `--reservation-id <id>` |
+
+### Admin-Only Filters
+
+| Filter | Description | Example |
+|---|---|---|
+| `--all-projects` | Search across all projects | `--all-projects` |
+| `--project` | Filter by project | `--project <id>` |
+| `--user` | Filter by user | `--user <id>` |
+| `--host` | Filter by compute host | `--host compute-01` |
+| `--deleted` | Include deleted instances | `--deleted` |
+| `--vm-state` | VM state (ACTIVE, PAUSED, etc.) | Via API |
+| `--task-state` | Active task state | Via API |
+| `--power-state` | Power state (0–7) | Via API |
+| `--hostname` | Instance hostname (until 2.90) | Via API |
+
+### Sorting
+
+| Sort Key | Description |
+|---|---|
+| `created_at` | Creation timestamp (default) |
+| `updated_at` | Last update timestamp |
+| `display_name` | Instance name |
+| `vm_state` | VM state |
+| `power_state` | Power state |
+| `availability_zone` | Availability zone |
+| `host` | Compute host (admin only) |
+| `project_id` | Project ID |
+| `user_id` | User ID |
+| `launched_at` | Launch timestamp |
+| `terminated_at` | Termination timestamp |
+| `locked` | Lock status (2.73+) |
+| `uuid` | Instance UUID |
+| `key_name` | Keypair name |
+
+### Pagination
+
+| Parameter | Description |
+|---|---|
+| `--limit` | Maximum results per page |
+| `--marker` | Last-seen item ID for next page |
+
+---
+
+## Advanced Search Examples
+
+<Accordion title="Find All Error Instances Across Projects">
+
+```bash
+xloud server list --all-projects --status ERROR --long
+```
+Returns all failed instances with host, project, and creation details.
+
+</Accordion>
+
+<Accordion title="Find Instances Changed in Last 24 Hours">
+
+```bash
+xloud server list --all-projects \
+  --changes-since $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)
+```
+
+</Accordion>
+
+<Accordion title="Find All Production VMs on a Specific Host">
+
+```bash
+xloud server list --all-projects --host compute-node-03 --tags production
+```
+
+</Accordion>
+
+<Accordion title="Find Locked Instances">
+
+```bash
+xloud server list --all-projects --locked true --long
+```
+
+</Accordion>
+
+<Accordion title="Find Instances by IP Across All Projects">
+
+```bash
+xloud server list --all-projects --ip 10.0.1.100
+```
+
+</Accordion>
+
+<Accordion title="Find All Resources for a User">
+
+```bash
+# Instances
+xloud server list --all-projects --user <user-id>
+
+# Floating IPs
+xloud floating ip list --project <user-project>
+
+# Ports
+xloud port list --project <user-project>
+
+# Volumes
+xloud volume list --all-projects --project <user-project>
+```
+
+</Accordion>
+
+<Accordion title="Find Networks with Specific Tags">
+
+```bash
+xloud network list --tags production --tags-any internal,external
+```
+
+</Accordion>
+
+<Accordion title="Cross-Resource Search (API)">
+
+Search across multiple resource types using parallel API calls:
+```bash
+# Search everything matching "web-01"
+xloud server list --name web-01
+xloud port list --fixed-ip ip-address=<ip>
+xloud floating ip list --fixed-ip-address <ip>
+xloud network show <network-id>
+xloud user show <user-id>
+```
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify Search Returns Results">
+```bash
+# Create a test instance with tags
+xloud server create --flavor m1.small --image cirros \
+  --network my-net --tag searchtest search-vm
+
+# Search by name
+xloud server list --name search-vm
+
+# Search by tag
+xloud server list --tags searchtest
+```
+Confirm the instance appears in both results.
+  </Step>
+
+  <Step title="Verify Cross-Project Search (Admin)">
+```bash
+xloud server list --all-projects --name search-vm
+```
+Confirm the instance is found regardless of active project context.
+  </Step>
+
+  <Step title="Verify User Search">
+```bash
+xloud user list --name admin
+xloud user show admin
+```
+Confirm user details are returned.
+  </Step>
+
+  <Step title="Verify Network Search">
+```bash
+xloud network list --name my-net
+xloud network show my-net
+```
+  </Step>
+
+  <Step title="Verify Host Search (Admin)">
+```bash
+xloud hypervisor list
+xloud server list --all-projects --host <hostname>
+```
+Confirm hypervisors are listed and instances can be filtered by host.
+  </Step>
+
+  <Step title="Cleanup">
+```bash
+xloud server delete search-vm
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Tags for Organization" icon="tags">
+Apply consistent tags (environment, team, application) to all resources. Tags enable the most flexible cross-resource search capabilities.
+  </Card>
+  <Card title="Use Pagination for Large Results" icon="book-open">
+Always use `--limit` for queries that may return large result sets. Default limits may truncate results in environments with thousands of resources.
+  </Card>
+  <Card title="Prefer Specific Filters" icon="filter">
+Combine multiple filters to narrow results. A search for `--status ACTIVE --tags production --availability-zone az-1` is faster than filtering client-side.
+  </Card>
+  <Card title="Use Microversion 2.83+" icon="code-branch">
+API microversion 2.83 makes many previously admin-only filters (AZ, key name, timestamps) available to all users.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Search Returns Empty Results">
+  **Symptom:** Filter query returns no results despite resources existing.
+
+  **Resolution:**
+  1. Verify the filter value is exact (status must be uppercase: `ACTIVE` not `active`)
+  2. For cross-project search, ensure `--all-projects` is specified (admin only)
+  3. For tag search, verify tags exist: `xloud server show <id> -c tags`
+  4. Check API microversion — some filters require specific versions
+</Accordion>
+
+<Accordion title="Admin-Only Filters Return 403">
+  **Symptom:** Filtering by host, user, or project returns `403 Forbidden`.
+
+  **Resolution:**
+  1. Verify the user has `admin` role: `xloud role assignment list --user <user> --names`
+  2. Some filters are admin-only by default (host, node, deleted, user_id, project_id)
+  3. From API microversion 2.83+, many filters are accessible to all users
+  4. To allow broader access, override the policy:
+```yaml
+"os_compute_api:servers:allow_all_filters": "rule:project_reader_or_admin"
+```
+</Accordion>
+
+<Accordion title="Regex Search Not Working">
+  **Symptom:** Name filter with regex pattern returns unexpected results.
+
+  **Resolution:**
+  1. Instance name search supports regex — use patterns like `^web-.*` or `.*-prod$`
+  2. Special characters may need escaping in the shell: use quotes around the pattern
+  3. Regex applies to the `--name` filter only — other string filters use exact or partial match
+</Accordion>
+
+<Accordion title="Pagination Returns Duplicate or Missing Items">
+  **Symptom:** Paginated results seem incomplete or contain duplicates.
+
+  **Resolution:**
+  1. Use `--marker` with the ID of the last item from the previous page
+  2. Ensure consistent sort order — default is `created_at desc`
+  3. If resources are being created/deleted during pagination, results may shift
+  4. Use `--changes-since` with a fixed timestamp for consistent snapshots
+</Accordion>

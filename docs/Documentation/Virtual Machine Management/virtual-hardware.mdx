@@ -1,0 +1,247 @@
+---
+title: "Virtual Hardware Management"
+description: "Add and remove disks, network interfaces, CPU, and memory on virtual machines managed by the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- Sufficient project quota for intended operations
+
+---
+
+## Concepts
+
+The Xloud hypervisor supports hot-add and hot-remove of virtual hardware components on managed VMs. Some operations require the VM to be stopped depending on the hardware type.
+
+| Hardware | Hot-Add | Hot-Remove | Requires Stop |
+|---|---|---|---|
+| **Disk (Volume)** | Yes | Yes | No |
+| **Network Interface** | Yes | Yes | No |
+| **CPU** | Via Resize | Via Resize | Yes (resize workflow) |
+| **Memory (RAM)** | Via Resize | Via Resize | Yes (resize workflow) |
+
+---
+
+## Add / Remove Disk (Volume)
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Attach Volume">
+Select instance → **Volumes** tab → **Attach Volume** → Select an available volume → Click **Attach Volume**.
+      </Step>
+      <Step title="Detach Volume">
+On the **Volumes** tab → Select the attached volume → Click **Detach Volume** → Confirm.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Attach a volume:
+```bash
+xloud server add volume <server-id> <volume-id>
+```
+
+Attach to a specific device path:
+```bash
+xloud server add volume <server-id> <volume-id> --device /dev/vdb
+```
+
+Detach a volume:
+```bash
+xloud server remove volume <server-id> <volume-id>
+```
+
+Swap a volume (replace attached volume without detach):
+```bash
+xloud server volume update <server-id> <old-volume-id> <new-volume-id>
+```
+
+List attached volumes:
+```bash
+xloud server volume list <server-id>
+```
+  </Tab>
+</Tabs>
+
+<Warning>
+Unmount the volume inside the guest OS before detaching to prevent data corruption.
+</Warning>
+
+---
+
+## Add / Remove Network Interface
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Attach Interface">
+Select instance → **Interfaces** tab → **Attach Interface** → Select **Network** or **Port** → Click **Attach Interface**.
+      </Step>
+      <Step title="Detach Interface">
+On the **Interfaces** tab → Select the interface → Click **Detach Interface** → Confirm.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Attach by network:
+```bash
+xloud server add network <server-id> <network-id>
+```
+
+Attach by port:
+```bash
+xloud server add port <server-id> <port-id>
+```
+
+Detach interface:
+```bash
+xloud server remove port <server-id> <port-id>
+```
+
+List interfaces:
+```bash
+xloud server interface list <server-id>
+```
+  </Tab>
+</Tabs>
+
+<Note>
+The guest OS may require manual network configuration for newly attached interfaces unless DHCP is enabled on the network.
+</Note>
+
+---
+
+## Change CPU and Memory (Resize)
+
+CPU and memory changes are performed via the **resize** operation, which assigns a different flavor to the VM.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Initiate Resize">
+Select instance → **Actions** → **Resize Instance** → Select the target flavor with desired vCPUs and RAM → Click **Resize**.
+      </Step>
+      <Step title="Verify">
+The instance enters `VERIFY_RESIZE` status. Test the VM with the new configuration.
+      </Step>
+      <Step title="Confirm or Revert">
+Click **Confirm Resize** to finalize, or **Revert Resize** to return to the original configuration.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+View available flavors:
+```bash
+xloud flavor list
+```
+
+Resize to a new flavor:
+```bash
+xloud server resize <server-id> --flavor <target-flavor>
+```
+
+Confirm resize:
+```bash
+xloud server resize confirm <server-id>
+```
+
+Revert resize:
+```bash
+xloud server resize revert <server-id>
+```
+
+Verify new configuration:
+```bash
+xloud server show <server-id> -c flavor -c status
+```
+  </Tab>
+</Tabs>
+
+**Example — Scale up from 2 vCPUs / 4 GB to 4 vCPUs / 8 GB:**
+
+```bash
+# Current: m1.medium (2 vCPU, 4GB RAM, 40GB disk)
+# Target:  m1.large  (4 vCPU, 8GB RAM, 80GB disk)
+
+xloud server resize my-instance --flavor m1.large
+# Wait for VERIFY_RESIZE status
+xloud server resize confirm my-instance
+```
+
+<Info>
+During the `VERIFY_RESIZE` window, resources are consumed on both source and target hosts. Configure `resize_confirm_window` in `nova.conf` to auto-confirm after a set period.
+</Info>
+
+---
+
+## Manage Security Groups
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Edit Security Groups** → Add or remove groups → **Save**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Add security group
+xloud server add security group <server-id> <group-name>
+
+# Remove security group
+xloud server remove security group <server-id> <group-name>
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Virtual Hardware Changes">
+```bash
+# Check attached volumes
+xloud server volume list <server-id>
+
+# Check attached interfaces
+xloud server interface list <server-id>
+
+# Check CPU/RAM after resize
+xloud server show <server-id> -c flavor
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Unmount Before Detach" icon="eject">
+Always unmount volumes and flush I/O inside the guest OS before detaching virtual disks.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Volume Attach/Detach Fails">
+
+**Resolution:**
+1. Verify volume status is `available` (attach) or `in-use` (detach): `xloud volume show <vol-id> -c status`
+2. Ensure VM is in `ACTIVE` or `SHUTOFF` state
+3. Check for device path conflicts on the VM
+4. Verify project quota allows additional attachments
+
+</Accordion>
+
+<Accordion title="Resize Fails with NoValidHost">
+
+**Resolution:**
+1. Verify target flavor resource requirements against available host capacity
+2. Check project quotas: `xloud quota show --project <project>`
+3. Review scheduler filter logs: `journalctl -u nova-scheduler`
+4. Ensure at least one host can accommodate the target flavor
+
+</Accordion>

@@ -1,0 +1,340 @@
+---
+title: "Automation Script Access"
+description: "RBAC policy configuration for CI/CD pipelines, orchestration tools, and infrastructure-as-code workflows in Xloud Compute."
+---
+
+## Overview
+
+Automation scripts (CI/CD pipelines, orchestration tools, IaC workflows) require programmatic API access to Xloud Compute with **minimum required privileges**. This guide covers how to configure dedicated service accounts, assign scoped roles, and customize policies for automation use cases.
+
+<Warning>
+JSON-formatted policy files are **deprecated**. Use YAML format exclusively. To convert:
+```bash
+oslopolicy-convert-json-to-yaml --namespace nova --policy-file policy.json --output-file policy.yaml
+```
+</Warning>
+
+---
+
+## Architecture / Concepts
+
+### RBAC Model
+
+The policy engine evaluates three factors for every API request:
+
+| Factor | Description |
+|---|---|
+| **Role** | User's assigned role — `admin`, `manager`, `member`, or `reader` |
+| **Scope** | Project context of the request |
+| **Target** | Resource-level attributes such as `project_id` or `user_id` |
+
+### Role Hierarchy
+
+| Role | Access Level | Typical Use |
+|---|---|---|
+| `admin` | Full access — host-level, cross-project, service management | Infrastructure operators |
+| `manager` | Member access + migrations, force-complete, capacity operations | Team leads, DevOps |
+| `member` | Create, update, delete servers and resources within a project | Developers, automation scripts |
+| `reader` | Read-only — list and show operations only | Monitoring, reporting, auditors |
+
+### Base Policy Rules
+
+| Rule | Definition |
+|---|---|
+| `context_is_admin` | `role:admin` |
+| `project_member_or_admin` | `role:member and project_id:%(project_id)s` OR `role:admin` |
+| `project_manager_or_admin` | `role:manager and project_id:%(project_id)s` OR `role:admin` |
+| `project_reader_or_admin` | `role:reader and project_id:%(project_id)s` OR `role:admin` |
+| `service_or_admin` | `role:service` OR `role:admin` |
+
+<Info>
+All Compute policies use **project** scope. Authorization is always evaluated within the context of a specific project.
+</Info>
+
+### Automation Role Mapping
+
+| Role | Automation Use Case |
+|---|---|
+| `reader` | Monitoring, reporting, inventory scripts |
+| `member` | Provisioning, lifecycle management scripts |
+| `manager` | Migration automation, capacity management |
+| `admin` | Infrastructure automation, cross-project orchestration |
+
+<Warning>
+Avoid assigning `admin` role to automation scripts unless absolutely necessary. Most provisioning workflows operate correctly with `member`.
+</Warning>
+
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed and operational
+- Xloud Identity (Keystone) configured with roles and project assignments
+- Administrative access to `/etc/nova/policy.yaml` on Compute API nodes
+- YAML-format policy file
+- Dedicated service accounts and application credentials
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create Service Account">
+Navigate to **Identity** → **Users** → **Create User**.
+
+- **Username:** `automation-svc-<purpose>` (e.g., `automation-svc-provisioning`)
+- **Project:** Assign to the target project
+- **Role:** Select appropriate role from the hierarchy above
+      </Step>
+      <Step title="Assign Role">
+Go to **Identity** → **Projects** → Select project → **Members** → **Add Member**.
+
+Assign the service account with the required role.
+      </Step>
+      <Step title="Generate Application Credentials">
+Go to **Identity** → **Application Credentials** → **Create Application Credential**.
+
+- Scope to the specific project
+- Set an expiration date
+- Download the generated `clouds.yaml`
+      </Step>
+    </Steps>
+
+    <Note>
+If the GUI is not available, use **Xdeploy** to manage service accounts and role assignments.
+    </Note>
+  </Tab>
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Create Service Account">
+```bash
+xloud user create automation-svc-provisioning \
+  --project my-automation-project \
+  --password-prompt
+```
+      </Step>
+      <Step title="Assign Role">
+        <CodeGroup>
+```bash Reader (Monitoring)
+xloud role add --user automation-svc-provisioning \
+  --project my-automation-project reader
+```
+```bash Member (Provisioning)
+xloud role add --user automation-svc-provisioning \
+  --project my-automation-project member
+```
+```bash Manager (Migration)
+xloud role add --user automation-svc-provisioning \
+  --project my-automation-project manager
+```
+        </CodeGroup>
+      </Step>
+      <Step title="Create Application Credential">
+```bash
+xloud application credential create auto-cred \
+  --role member \
+  --expiration 2026-12-31T23:59:59
+```
+Store the output securely.
+      </Step>
+      <Step title="Customize Policies (If Required)">
+```bash
+vi /etc/nova/policy.yaml
+```
+Example — allow `member` to view diagnostics (default admin-only):
+```yaml
+"os_compute_api:os-server-diagnostics": "rule:project_member_or_admin"
+```
+      </Step>
+      <Step title="Validate and Apply">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+systemctl reload nova-api
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Policy Reference — Automation Use Cases
+
+<Accordion title="Monitoring & Reporting Scripts (reader)">
+
+| Policy | Description | Operation |
+|---|---|---|
+| `os_compute_api:servers:index` | List servers | `GET /servers` |
+| `os_compute_api:servers:detail` | List servers with details | `GET /servers/detail` |
+| `os_compute_api:servers:show` | Show server details | `GET /servers/{id}` |
+| `os_compute_api:os-instance-actions:list` | List instance actions | `GET /servers/{id}/os-instance-actions` |
+| `os_compute_api:os-instance-actions:show` | Show action details | `GET /servers/{id}/os-instance-actions/{req_id}` |
+| `os_compute_api:os-availability-zone:list` | List availability zones | `GET /os-availability-zone` |
+| `os_compute_api:os-quota-sets:show` | Show quotas | `GET /os-quota-sets/{tenant_id}` |
+| `os_compute_api:os-simple-tenant-usage:show` | Show project usage | `GET /os-simple-tenant-usage/{tenant_id}` |
+| `os_compute_api:os-server-tags:index` | List server tags | `GET /servers/{id}/tags` |
+| `os_compute_api:server-metadata:index` | List metadata | `GET /servers/{id}/metadata` |
+
+</Accordion>
+
+<Accordion title="Provisioning & Lifecycle Scripts (member)">
+
+| Policy | Description | Operation |
+|---|---|---|
+| `os_compute_api:servers:create` | Create server | `POST /servers` |
+| `os_compute_api:servers:create:attach_volume` | Create with volume | `POST /servers` |
+| `os_compute_api:servers:create:attach_network` | Create with network | `POST /servers` |
+| `os_compute_api:servers:delete` | Delete server | `DELETE /servers/{id}` |
+| `os_compute_api:servers:update` | Update server | `PUT /servers/{id}` |
+| `os_compute_api:servers:start` | Start server | `POST /servers/{id}/action` |
+| `os_compute_api:servers:stop` | Stop server | `POST /servers/{id}/action` |
+| `os_compute_api:servers:reboot` | Reboot server | `POST /servers/{id}/action` |
+| `os_compute_api:servers:resize` | Resize server | `POST /servers/{id}/action` |
+| `os_compute_api:servers:confirm_resize` | Confirm resize | `POST /servers/{id}/action` |
+| `os_compute_api:servers:rebuild` | Rebuild server | `POST /servers/{id}/action` |
+| `os_compute_api:os-keypairs:create` | Create keypair | `POST /os-keypairs` |
+| `os_compute_api:os-attach-interfaces:create` | Attach interface | `POST /servers/{id}/os-interface` |
+| `os_compute_api:os-volumes-attachments:create` | Attach volume | `POST /servers/{id}/os-volume_attachments` |
+| `os_compute_api:os-create-backup` | Create backup | `POST /servers/{id}/action` |
+| `os_compute_api:servers:create_image` | Create image | `POST /servers/{id}/action` |
+| `os_compute_api:server-metadata:create` | Set metadata | `POST /servers/{id}/metadata` |
+| `os_compute_api:os-server-tags:update` | Add tag | `PUT /servers/{id}/tags/{tag}` |
+
+</Accordion>
+
+<Accordion title="Migration & Capacity Scripts (manager)">
+
+| Policy | Description | Operation |
+|---|---|---|
+| `os_compute_api:os-migrate-server:migrate` | Cold migrate | `POST /servers/{id}/action` |
+| `os_compute_api:os-migrate-server:migrate_live` | Live migrate | `POST /servers/{id}/action` |
+| `os_compute_api:os-migrations:index` | List migrations | `GET /os-migrations` |
+| `os_compute_api:servers:migrations:force_complete` | Force complete | `POST /servers/{id}/migrations/{mig_id}/action` |
+| `os_compute_api:servers:migrations:delete` | Abort migration | `DELETE /servers/{id}/migrations/{mig_id}` |
+
+<Info>
+Migration to a **specific host** requires `admin` role. The `manager` role triggers migrations without specifying a target — the scheduler selects the destination.
+</Info>
+
+</Accordion>
+
+<Accordion title="Infrastructure Automation (admin)">
+
+| Policy | Description | Operation |
+|---|---|---|
+| `os_compute_api:os-hypervisors:list` | List hypervisors | `GET /os-hypervisors` |
+| `os_compute_api:os-hypervisors:show` | Show hypervisor details | `GET /os-hypervisors/{id}` |
+| `os_compute_api:os-services:list` | List compute services | `GET /os-services` |
+| `os_compute_api:os-services:update` | Enable/disable service | `PUT /os-services/{id}` |
+| `os_compute_api:os-aggregates:create` | Create aggregate | `POST /os-aggregates` |
+| `os_compute_api:os-aggregates:add_host` | Add host to aggregate | `POST /os-aggregates/{id}/action` |
+| `os_compute_api:os-evacuate` | Evacuate from failed host | `POST /servers/{id}/action` |
+| `os_compute_api:os-admin-actions:reset_state` | Reset server state | `POST /servers/{id}/action` |
+| `os_compute_api:os-quota-sets:update` | Update quotas | `PUT /os-quota-sets/{tenant_id}` |
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Validate Policy Syntax">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+```
+No output indicates valid syntax.
+  </Step>
+
+  <Step title="Simulate Policy Check">
+```bash
+oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml \
+  --rule "os_compute_api:servers:create" \
+  --target '{"project_id": "proj-123"}' \
+  --access '{"roles": ["member"], "project_id": "proj-123"}'
+```
+Returns `True` if authorized.
+  </Step>
+
+  <Step title="Verify Automation Access">
+```bash
+xloud role assignment list --user automation-svc-provisioning \
+  --project my-automation-project --names
+```
+  </Step>
+
+  <Step title="Verify Denied Access">
+Authenticate as a `reader` role user:
+```bash
+xloud server create --flavor m1.small --image cirros --network my-net denied-vm
+```
+Expected: `403 Forbidden`
+  </Step>
+
+  <Step title="Identify Redundant Overrides">
+```bash
+oslopolicy-list-redundant --namespace nova --policy /etc/nova/policy.yaml
+```
+Remove rules that match defaults to keep the file minimal.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Application Credentials" icon="key">
+Use scoped application credentials for automation instead of username/password. Set expiration dates and rotate regularly.
+  </Card>
+  <Card title="One Account Per Workflow" icon="id-card">
+Create separate service accounts for provisioning, monitoring, and migration workflows for granular auditing.
+  </Card>
+  <Card title="Minimal Policy Overrides" icon="filter">
+Only override policies that differ from defaults. Keep `/etc/nova/policy.yaml` minimal for easier upgrades.
+  </Card>
+  <Card title="Scope to Project" icon="folder">
+Always scope service accounts and application credentials to the specific project they need access to.
+  </Card>
+</CardGroup>
+
+<Warning>
+Never embed credentials in automation scripts. Use environment variables, secret managers, or `clouds.yaml` files.
+</Warning>
+
+---
+
+## Troubleshooting
+
+<Accordion title="403 Forbidden on API Call">
+**Resolution:**
+1. Identify the policy key for the API from the reference tables above
+2. Check the user's role: `xloud role assignment list --user <user> --project <project> --names`
+3. Simulate: `oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml --rule "<policy-key>" ...`
+4. Update policy and reload: `systemctl reload nova-api`
+</Accordion>
+
+<Accordion title="Application Credential Expired">
+**Resolution:**
+1. Check expiration: `xloud application credential list`
+2. Create new credential with updated expiration
+3. Update automation script's `clouds.yaml` or environment variables
+</Accordion>
+
+<Accordion title="Policy Changes Not Taking Effect">
+**Resolution:**
+1. Verify file path matches `policy_file` in `nova.conf`
+2. Validate syntax: `oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml`
+3. Reload: `systemctl reload nova-api`
+4. Check for redundant rules: `oslopolicy-list-redundant --namespace nova`
+</Accordion>
+
+<Accordion title="Script Works Locally but Fails in CI/CD">
+**Resolution:**
+1. Verify the CI/CD environment uses the correct `clouds.yaml` or application credential
+2. Check that the service account has the required role in the target project
+3. Ensure the application credential has not expired
+4. Confirm network connectivity from the CI/CD runner to the Xloud API endpoint
+</Accordion>

@@ -1,0 +1,286 @@
+---
+title: "Instance Resize Permissions"
+description: "RBAC policy configuration for instance resize operations — flavor changes, confirmation, reversion, and cross-cell resize in Xloud Compute."
+---
+
+## Overview
+
+Resize changes VM resources by assigning a different flavor. This guide covers RBAC configuration for resize initiation, confirmation, reversion, and cross-cell resize — enabling fine-grained control over who can change instance resources.
+
+<Warning>
+JSON-formatted policy files are **deprecated**. Use YAML format exclusively. To convert:
+```bash
+oslopolicy-convert-json-to-yaml --namespace nova --policy-file policy.json --output-file policy.yaml
+```
+</Warning>
+
+---
+
+## Architecture / Concepts
+
+### RBAC Model
+
+The policy engine evaluates three factors for every API request:
+
+| Factor | Description |
+|---|---|
+| **Role** | User's assigned role — `admin`, `manager`, `member`, or `reader` |
+| **Scope** | Project context of the request |
+| **Target** | Resource-level attributes such as `project_id` or `user_id` |
+
+### Role Hierarchy
+
+| Role | Access Level | Typical Use |
+|---|---|---|
+| `admin` | Full access — host-level, cross-project, service management | Infrastructure operators |
+| `manager` | Member access + migrations, force-complete, capacity operations | Team leads, DevOps |
+| `member` | Create, update, delete servers and resources within a project | Developers, automation scripts |
+| `reader` | Read-only — list and show operations only | Monitoring, reporting, auditors |
+
+### Base Policy Rules
+
+| Rule | Definition |
+|---|---|
+| `context_is_admin` | `role:admin` |
+| `project_member_or_admin` | `role:member and project_id:%(project_id)s` OR `role:admin` |
+| `project_manager_or_admin` | `role:manager and project_id:%(project_id)s` OR `role:admin` |
+| `project_reader_or_admin` | `role:reader and project_id:%(project_id)s` OR `role:admin` |
+| `service_or_admin` | `role:service` OR `role:admin` |
+
+<Info>
+All Compute policies use **project** scope. Authorization is always evaluated within the context of a specific project.
+</Info>
+
+### Resize Workflow
+
+Resize follows a multi-step workflow:
+
+1. **Initiate** → 2. **Scheduler evaluates** → 3. **Migration** → 4. **VERIFY_RESIZE** → 5. **Confirm or Revert**
+
+| Stage | Policy Key | Default |
+|---|---|---|
+| Initiate resize | `servers:resize` | `project_member_or_admin` |
+| Confirm resize | `servers:confirm_resize` | `project_member_or_admin` |
+| Revert resize | `servers:revert_resize` | `project_member_or_admin` |
+| Cross-cell resize | `servers:resize:cross_cell` | `!` (disabled) |
+
+<Info>
+If `resize_confirm_window` is configured, unconfirmed resizes auto-confirm after the specified seconds.
+</Info>
+
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed and operational
+- Xloud Identity (Keystone) configured with roles and project assignments
+- Administrative access to `/etc/nova/policy.yaml` on Compute API nodes
+- YAML-format policy file
+- Sufficient quota for the target flavor
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Locate Resize Policies">
+Navigate to **Admin** → **Compute** → **Policy Configuration**. Filter by **Server Actions**.
+      </Step>
+      <Step title="Adjust Access Level">
+To restrict resize to managers: select `os_compute_api:servers:resize` → **Edit** → change to `rule:project_manager_or_admin`. Repeat for `confirm_resize` and `revert_resize`.
+      </Step>
+      <Step title="Resize an Instance">
+Navigate to **Instances** → Select instance → **Actions** → **Resize Instance** → Select target flavor → Confirm. After verification: **Confirm Resize** or **Revert Resize**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Configure Resize Policies">
+```bash
+vi /etc/nova/policy.yaml
+```
+
+        <CodeGroup>
+```yaml Default (Members Can Resize)
+# No override needed — defaults allow member access
+```
+```yaml Restrict to Managers
+"os_compute_api:servers:resize": "rule:project_manager_or_admin"
+"os_compute_api:servers:confirm_resize": "rule:project_manager_or_admin"
+"os_compute_api:servers:revert_resize": "rule:project_manager_or_admin"
+```
+```yaml Split (Manager Initiates, Member Confirms)
+"os_compute_api:servers:resize": "rule:project_manager_or_admin"
+"os_compute_api:servers:confirm_resize": "rule:project_member_or_admin"
+"os_compute_api:servers:revert_resize": "rule:project_member_or_admin"
+```
+```yaml Enable Cross-Cell Resize
+"compute:servers:resize:cross_cell": "rule:context_is_admin"
+```
+        </CodeGroup>
+
+        <Warning>
+Cross-cell resize is **disabled by default** (`!`). Test in staging before enabling.
+        </Warning>
+      </Step>
+      <Step title="Resize Workflow">
+```bash
+xloud server resize <server-id> --flavor <target-flavor>
+# Wait for VERIFY_RESIZE
+xloud server resize confirm <server-id>
+# Or revert
+xloud server resize revert <server-id>
+```
+      </Step>
+      <Step title="Validate and Apply">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+systemctl reload nova-api
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Policy Reference — Resize
+
+<Accordion title="Core Resize Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:servers:resize` | `project_member_or_admin` | Initiate resize | `POST /servers/{id}/action (resize)` |
+| `os_compute_api:servers:confirm_resize` | `project_member_or_admin` | Confirm resize | `POST /servers/{id}/action (confirmResize)` |
+| `os_compute_api:servers:revert_resize` | `project_member_or_admin` | Revert resize | `POST /servers/{id}/action (revertResize)` |
+| `compute:servers:resize:cross_cell` | `!` (disabled) | Cross-cell resize | `POST /servers/{id}/action (resize)` |
+
+</Accordion>
+
+<Accordion title="Related Flavor & Quota Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-flavor-access` | `context_is_admin` | List flavor project access | `GET /flavors/{id}/os-flavor-access` |
+| `os_compute_api:os-flavor-access:add_tenant_access` | `context_is_admin` | Grant project access to flavor | `POST /flavors/{id}/action` |
+| `os_compute_api:os-flavor-access:remove_tenant_access` | `context_is_admin` | Revoke project access | `POST /flavors/{id}/action` |
+| `os_compute_api:os-quota-sets:show` | `project_reader_or_admin` | Show quotas | `GET /os-quota-sets/{tenant_id}` |
+| `os_compute_api:limits` | `@` | Show project limits | `GET /limits` |
+| `os_compute_api:os-migrations:index` | `project_manager_or_admin` | List migrations | `GET /os-migrations` |
+
+<Info>
+Users can only resize to flavors they have access to. Private flavors require explicit project access via `add_tenant_access`.
+</Info>
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Validate Policy Syntax">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+```
+No output indicates valid syntax.
+  </Step>
+
+  <Step title="Simulate Policy Check">
+```bash
+oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml \
+  --rule "os_compute_api:servers:resize" \
+  --target '{"project_id": "proj-123"}' \
+  --access '{"roles": ["member"], "project_id": "proj-123"}'
+```
+Returns `True` if authorized.
+  </Step>
+
+  <Step title="Verify Resize Workflow">
+```bash
+xloud server resize <server-id> --flavor <new-flavor>
+xloud server show <server-id> -c status  # Expect: VERIFY_RESIZE
+xloud server resize confirm <server-id>
+xloud server show <server-id> -c status -c flavor  # Expect: ACTIVE
+```
+  </Step>
+
+  <Step title="Verify Denied Access">
+Authenticate as a `reader` role user:
+```bash
+xloud server resize <server-id> --flavor <new-flavor>
+```
+Expected: `403 Forbidden`
+  </Step>
+
+  <Step title="Identify Redundant Overrides">
+```bash
+oslopolicy-list-redundant --namespace nova --policy /etc/nova/policy.yaml
+```
+Remove rules that match defaults to keep the file minimal.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Resize & Confirm Aligned" icon="link">
+If restricting resize to managers, ensure `confirm_resize` and `revert_resize` are accessible to the same role.
+  </Card>
+  <Card title="Set Auto-Confirm Window" icon="clock">
+Configure `resize_confirm_window` to auto-confirm unattended resizes and prevent resource double-allocation.
+  </Card>
+  <Card title="Verify Quota Before Resize" icon="gauge">
+Ensure the project has sufficient quota for the target flavor. Resize consumes resources from both source and target until confirmed.
+  </Card>
+  <Card title="Test Cross-Cell Resize" icon="flask">
+Cross-cell resize is disabled by default. Test thoroughly in staging before enabling in production.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="403 Forbidden on Resize">
+**Resolution:**
+1. Check the user's role: `xloud role assignment list --user <user> --project <project> --names`
+2. Verify the `os_compute_api:servers:resize` policy allows their role
+3. Simulate: `oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml --rule "os_compute_api:servers:resize" ...`
+4. Update policy and reload: `systemctl reload nova-api`
+</Accordion>
+
+<Accordion title="Resize Fails with NoValidHost">
+**Resolution:**
+1. The target flavor may require more resources than any available host can provide
+2. Check resource availability: `xloud hypervisor stats show`
+3. Verify quota: `xloud quota show --project <project>`
+4. If using aggregates or availability zones, ensure valid hosts exist in the target scope
+</Accordion>
+
+<Accordion title="Instance Stuck in VERIFY_RESIZE">
+**Resolution:**
+1. Check if user has `confirm_resize` permission
+2. Admin can force confirm: `xloud server resize confirm <server-id>`
+3. Set auto-confirm: `resize_confirm_window = 3600` in `nova.conf`
+</Accordion>
+
+<Accordion title="Cannot Resize to Private Flavor">
+**Resolution:**
+1. Check if flavor is private: `xloud flavor show <flavor> -c os-flavor-access:is_public`
+2. Verify project access: `xloud flavor access list --flavor <flavor>`
+3. Grant access: `xloud flavor set --project <project-id> <flavor>`
+</Accordion>
+
+<Accordion title="Cross-Cell Resize Fails">
+**Resolution:**
+1. Verify `compute:servers:resize:cross_cell` is not set to `!` (disabled)
+2. Confirm the user has the required role for the cross-cell policy
+3. Check that both cells are healthy: `nova-manage cell_v2 list_cells`
+4. Review nova-api and nova-conductor logs for cross-cell errors
+</Accordion>

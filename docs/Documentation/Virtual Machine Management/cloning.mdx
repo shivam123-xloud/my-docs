@@ -1,0 +1,147 @@
+---
+title: "Cloning of VM & Clone to VM Template"
+description: "Clone virtual machines and create reusable VM templates from running instances on the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- Sufficient project quota for intended operations
+
+---
+
+## Concepts
+
+Xloud supports VM cloning through a **snapshot-and-launch** workflow:
+
+1. **Clone VM** — Create a snapshot of the source VM, then launch a new VM from that snapshot
+2. **Clone to Template** — Create a snapshot image that serves as a reusable template for future VM provisioning
+
+<Info>
+Xloud snapshots capture the full disk state. For volume-backed VMs, the volume is snapshotted via the Block Storage service.
+</Info>
+
+---
+
+## Clone a VM
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create Snapshot of Source VM">
+Select the source instance → **Actions** → **Create Snapshot** → Name it (e.g., `clone-source-<date>`) → Click **Create Snapshot**.
+      </Step>
+      <Step title="Launch Clone from Snapshot">
+Navigate to **Project** → **Compute** → **Images** → Find the snapshot → Click **Launch**.
+
+Complete the launch wizard with desired configuration (flavor, network, etc.). The new VM is an independent clone.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Step 1: Snapshot the source VM
+xloud server image create <source-server-id> --name clone-source
+
+# Step 2: Wait for snapshot to become active
+xloud image show clone-source -c status
+
+# Step 3: Launch clone from snapshot
+xloud server create \
+  --flavor m1.medium \
+  --image clone-source \
+  --network my-network \
+  --key-name my-keypair \
+  cloned-instance
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Clone to VM Template
+
+Create a reusable template image from a running VM. Templates can be used to launch multiple identical VMs.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Prepare the Source VM">
+Clean the source VM of instance-specific data (SSH host keys, logs, machine ID) before snapshotting for template use.
+      </Step>
+      <Step title="Create Template Image">
+Select the source instance → **Actions** → **Create Snapshot** → Name it descriptively (e.g., `template-ubuntu-webserver-v2`) → Click **Create Snapshot**.
+      </Step>
+      <Step title="Set Image Properties">
+Navigate to **Images** → Select the template → **Edit Image** → Set visibility to **Project** or **Public** → Add metadata for identification.
+      </Step>
+      <Step title="Launch from Template">
+Future VMs can be launched from this template via **Images** → Select template → **Launch**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+```bash
+# Step 1: Snapshot as template
+xloud server image create <source-server-id> --name template-ubuntu-webserver-v2
+
+# Step 2: Set template properties
+xloud image set template-ubuntu-webserver-v2 \
+  --property os_type=linux \
+  --property os_distro=ubuntu \
+  --property template_version=2.0
+
+# Step 3: Share template with project (or make public)
+xloud image set template-ubuntu-webserver-v2 --visibility shared
+
+# Step 4: Launch VMs from template
+xloud server create \
+  --flavor m1.medium \
+  --image template-ubuntu-webserver-v2 \
+  --network my-network \
+  web-server-01
+```
+  </Tab>
+</Tabs>
+
+<Tip>
+Before creating a template, run `cloud-init clean` inside the source VM to reset instance-specific state. This ensures each VM launched from the template gets unique identifiers.
+</Tip>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Clone">
+```bash
+xloud server show <server-id> -c status -c flavor -c addresses -c image
+```
+Confirm status is `ACTIVE` and image matches the snapshot used.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Clean Before Templating" icon="broom">
+Run `cloud-init clean` inside the VM before creating a template snapshot to remove instance-specific state.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Clone Launch Fails">
+
+**Resolution:**
+1. Verify the snapshot image is in `active` status: `xloud image show <snapshot-id> -c status`
+2. Check the snapshot's minimum disk/RAM requirements match the selected flavor
+3. Ensure the snapshot is accessible to the project (check visibility)
+4. Verify project quota allows the new instance
+
+</Accordion>

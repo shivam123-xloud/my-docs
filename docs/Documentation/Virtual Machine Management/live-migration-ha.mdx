@@ -1,0 +1,255 @@
+---
+title: "Live Migration, VM HA & Host Pinning"
+description: "Live migrate VMs between hosts, configure VM high availability with anti-affinity groups, and pin VMs to specific hosts on the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- For live migration: shared storage or block migration capability between hosts
+- For host pinning: dedicated CPU flavors configured
+
+---
+
+## Migration Types
+
+| Type | Downtime | Behavior |
+|---|---|---|
+| **Live Migration (shared storage)** | Minimal | VM stays running; memory transferred over network. Ephemeral disks on shared storage. |
+| **Live Migration (block)** | Minimal | VM stays running; ephemeral disks copied between hosts over network. |
+| **Live Migration (volume-backed)** | Minimal | VM stays running; no disk copy needed (volumes handled by storage backend). |
+| **Cold Migration** | Full | VM shut down, moved, restarted on new host. |
+
+---
+
+## Live Migration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Initiate Migration">
+Select instance → **Actions** → **Live Migrate Instance**.
+      </Step>
+      <Step title="Select Target (Optional)">
+Choose a target host or leave as **Auto** for scheduler selection.
+      </Step>
+      <Step title="Configure Options">
+
+- **Block Migration** — Enable if hosts do not share storage
+- **Force** — Override safety checks (admin only)
+      </Step>
+      <Step title="Confirm">
+Click **Live Migrate**. Monitor the instance status until it returns to `ACTIVE`.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Scheduler selects target host:
+```bash
+xloud server migrate --live auto <server-id>
+```
+
+Specify target host (admin/manager):
+```bash
+xloud server migrate --live <target-host> <server-id>
+```
+
+Block migration (no shared storage):
+```bash
+xloud server migrate --live auto --block-migration <server-id>
+```
+
+Monitor migration progress:
+```bash
+xloud server migration list <server-id>
+xloud server show <server-id> -c status -c OS-EXT-SRV-ATTR:host
+```
+  </Tab>
+</Tabs>
+
+<Accordion title="Live Migration Configuration Parameters">
+
+The following `nova.conf` parameters control live migration behavior:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `live_migration_completion_timeout` | `800` | Timeout per GiB of instance memory (seconds) |
+| `live_migration_downtime` | `500` | Maximum switchover downtime (milliseconds) |
+| `live_migration_downtime_steps` | `10` | Number of incremental downtime adjustment steps |
+| `live_migration_downtime_delay` | `75` | Seconds between downtime adjustment steps |
+| `live_migration_permit_auto_converge` | `false` | Throttle guest CPU to help memory convergence |
+| `live_migration_permit_post_copy` | `false` | Activate VM on destination before full memory copy |
+
+**Infrastructure prerequisites:**
+- VNC server must listen on `0.0.0.0`: `server_listen=0.0.0.0`
+- Identical `instances_path` across all compute hosts
+- Passwordless SSH between compute hosts for the nova user
+- Firewall rules allowing TCP ports 49152–49261 for memory/disk transfer
+
+**For shared storage (NFS):**
+```bash
+# On NFS server - /etc/exports
+/var/lib/nova/instances *(rw,sync,fsid=0,no_root_squash)
+
+# On compute hosts - /etc/fstab
+nfs-server:/ /var/lib/nova/instances nfs4 defaults 0 0
+```
+
+</Accordion>
+
+---
+
+## VM High Availability (HA)
+
+Xloud provides VM HA through multiple mechanisms:
+
+<CardGroup cols={2}>
+  <Card title="Evacuation" icon="life-ring">
+Automatically or manually move VMs from a failed host to a healthy host. Admin-only operation.
+  </Card>
+  <Card title="Anti-Affinity Groups" icon="shield-halved">
+Spread VMs across different hosts to prevent single-point-of-failure.
+  </Card>
+</CardGroup>
+
+<Tabs>
+  <Tab title="GUI">
+**Evacuate:** Navigate to **Admin** → **Instances** → Select instance on failed host → **Actions** → **Evacuate Instance** → Optionally select target host → Confirm.
+
+**Server Groups:** Navigate to **Project** → **Compute** → **Server Groups** → **Create Server Group** → Select `anti-affinity` policy.
+  </Tab>
+  <Tab title="CLI">
+Evacuate from failed host:
+```bash
+xloud server evacuate <server-id>
+
+# Evacuate to specific host
+xloud server evacuate <server-id> --host <target-host>
+```
+
+Create HA server group:
+```bash
+xloud server group create --policy anti-affinity ha-group
+```
+
+Launch VM in HA group:
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --network my-network \
+  --hint group=<ha-group-id> \
+  ha-instance
+```
+  </Tab>
+</Tabs>
+
+<Warning>
+Evacuation assumes the source host is **down**. If the source host is still running, data corruption may occur due to simultaneous disk access.
+</Warning>
+
+| Server Group Policy | Behavior |
+|---|---|
+| `affinity` | All members on the same host |
+| `anti-affinity` | Members on different hosts (strict) |
+| `soft-affinity` | Best-effort same host |
+| `soft-anti-affinity` | Best-effort different hosts |
+
+---
+
+## Pin VM to Specific Host
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="During Creation">
+In the **Launch Instance** wizard → **Details** → Set **Availability Zone** to `az:hostname` format (e.g., `nova:compute-01`).
+      </Step>
+      <Step title="Via Unshelve">
+When unshelving a VM: **Actions** → **Unshelve Instance** → Select target host.
+      </Step>
+    </Steps>
+
+    <Note>
+Host specification during creation requires admin privileges. For non-admin users, configure RBAC policies to allow `requested_destination`.
+    </Note>
+  </Tab>
+  <Tab title="CLI">
+Create VM on specific host (admin):
+```bash
+xloud server create \
+  --flavor m1.medium \
+  --image ubuntu-22.04 \
+  --network my-network \
+  --availability-zone nova:compute-node-01 \
+  pinned-instance
+```
+
+Live migrate to specific host:
+```bash
+xloud server migrate --live compute-node-02 <server-id>
+```
+
+Unshelve to specific host:
+```bash
+xloud server unshelve --host compute-node-01 <server-id>
+```
+
+Configure CPU pinning via flavor:
+```bash
+xloud flavor create --vcpus 4 --ram 8192 --disk 80 pinned.4c8g
+
+xloud flavor set pinned.4c8g \
+  --property hw:cpu_policy=dedicated \
+  --property hw:numa_nodes=1 \
+  --property hw:mem_page_size=large \
+  --property hw:cpu_thread_policy=isolate
+```
+
+Verify host placement:
+```bash
+xloud server show <server-id> \
+  -c OS-EXT-SRV-ATTR:host \
+  -c OS-EXT-SRV-ATTR:hypervisor_hostname
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Migration">
+```bash
+xloud server show <server-id> -c OS-EXT-SRV-ATTR:host -c status
+```
+Confirm host changed and status is `ACTIVE`.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Anti-Affinity for HA" icon="shield-halved">
+Use anti-affinity server groups for production workloads to distribute VMs across hypervisor hosts.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Live Migration Fails or Times Out">
+
+**Resolution:**
+1. Verify source and target hosts have compatible CPU architectures
+2. If no shared storage, enable block migration (`--block-migration`)
+3. Check firewall rules allow TCP ports 49152–49261 between hosts
+4. For large VMs, increase `live_migration_completion_timeout` in `nova.conf`
+5. Consider enabling `live_migration_permit_auto_converge` for memory-intensive VMs
+
+</Accordion>

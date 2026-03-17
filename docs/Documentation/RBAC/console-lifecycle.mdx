@@ -1,0 +1,336 @@
+---
+title: "Console Access & Instance Lifecycle"
+description: "RBAC policy configuration for remote console access, instance creation, deletion, and soft-delete workflows in Xloud Compute."
+---
+
+## Overview
+
+Xloud Compute provides multiple console types for remote access and a full instance lifecycle with optional soft-delete recovery. This guide covers RBAC configuration for console access, instance creation, deletion, and soft-delete workflows.
+
+<Warning>
+JSON-formatted policy files are **deprecated**. Use YAML format exclusively. To convert:
+```bash
+oslopolicy-convert-json-to-yaml --namespace nova --policy-file policy.json --output-file policy.yaml
+```
+</Warning>
+
+---
+
+## Architecture / Concepts
+
+### RBAC Model
+
+The policy engine evaluates three factors for every API request:
+
+| Factor | Description |
+|---|---|
+| **Role** | User's assigned role — `admin`, `manager`, `member`, or `reader` |
+| **Scope** | Project context of the request |
+| **Target** | Resource-level attributes such as `project_id` or `user_id` |
+
+### Role Hierarchy
+
+| Role | Access Level | Typical Use |
+|---|---|---|
+| `admin` | Full access — host-level, cross-project, service management | Infrastructure operators |
+| `manager` | Member access + migrations, force-complete, capacity operations | Team leads, DevOps |
+| `member` | Create, update, delete servers and resources within a project | Developers, automation scripts |
+| `reader` | Read-only — list and show operations only | Monitoring, reporting, auditors |
+
+### Base Policy Rules
+
+| Rule | Definition |
+|---|---|
+| `context_is_admin` | `role:admin` |
+| `project_member_or_admin` | `role:member and project_id:%(project_id)s` OR `role:admin` |
+| `project_manager_or_admin` | `role:manager and project_id:%(project_id)s` OR `role:admin` |
+| `project_reader_or_admin` | `role:reader and project_id:%(project_id)s` OR `role:admin` |
+| `service_or_admin` | `role:service` OR `role:admin` |
+
+<Info>
+All Compute policies use **project** scope. Authorization is always evaluated within the context of a specific project.
+</Info>
+
+### Console Access
+
+| Console Type | Description | Use Case |
+|---|---|---|
+| **VNC** | Graphical console via noVNC | General-purpose GUI access |
+| **SPICE** | High-performance graphical console | Multimedia and desktop workloads |
+| **Serial** | Text-based serial console | Headless servers, boot troubleshooting |
+| **Console Output** | Read-only boot/runtime log | Debugging boot failures |
+
+### Instance Lifecycle
+
+| Operation | Description | Reversible |
+|---|---|---|
+| **Create** | Provision new instance | No |
+| **Delete** | Terminate and remove | No (unless soft-delete) |
+| **Soft Delete** | Mark for deferred cleanup | Yes — restore within window |
+| **Force Delete** | Immediately delete | No |
+| **Restore** | Recover soft-deleted instance | N/A |
+
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed and operational
+- Xloud Identity (Keystone) configured with roles and project assignments
+- Administrative access to `/etc/nova/policy.yaml` on Compute API nodes
+- YAML-format policy file
+- For console access: VNC/SPICE proxy service running
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Access Console">
+Select instance → **Console** tab for embedded VNC. Or **Actions** → **Get Console URL** for standalone URL.
+      </Step>
+      <Step title="View Console Log">
+Select instance → **Log** tab.
+      </Step>
+      <Step title="Create Instance">
+**Instances** → **Launch Instance** → Complete wizard (Details, Source, Flavor, Networks, Security Groups, Key Pair) → **Launch**.
+      </Step>
+      <Step title="Delete Instance">
+Select instance → **Actions** → **Delete Instance** → Confirm.
+      </Step>
+      <Step title="Restore Soft-Deleted">
+**Admin** → **Instances** → Filter **Soft Deleted** → **Restore Instance**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Console Operations">
+        <CodeGroup>
+```bash VNC Console
+xloud console url show --novnc <server-id>
+```
+```bash SPICE Console
+xloud console url show --spice <server-id>
+```
+```bash Serial Console
+xloud console url show --serial <server-id>
+```
+```bash Console Output
+xloud console log show --lines 50 <server-id>
+```
+        </CodeGroup>
+      </Step>
+      <Step title="Lifecycle Operations">
+```bash
+# Create
+xloud server create --flavor m1.medium --image ubuntu-22.04 \
+  --network my-network --key-name my-keypair my-instance
+
+# Delete
+xloud server delete <server-id>
+
+# Force delete
+xloud server delete --force <server-id>
+
+# Restore soft-deleted
+xloud server restore <server-id>
+```
+      </Step>
+      <Step title="Configure Policies">
+```bash
+vi /etc/nova/policy.yaml
+```
+
+        <CodeGroup>
+```yaml Default (Members Manage Instances & Console)
+# No override needed
+```
+```yaml Restrict Create/Delete to Managers, Console to Members
+"os_compute_api:servers:create": "rule:project_manager_or_admin"
+"os_compute_api:servers:delete": "rule:project_manager_or_admin"
+"os_compute_api:os-deferred-delete:force": "rule:project_manager_or_admin"
+```
+```yaml Restrict All to Managers
+"os_compute_api:servers:create": "rule:project_manager_or_admin"
+"os_compute_api:servers:delete": "rule:project_manager_or_admin"
+"os_compute_api:os-deferred-delete:restore": "rule:project_manager_or_admin"
+"os_compute_api:os-deferred-delete:force": "rule:project_manager_or_admin"
+"os_compute_api:os-remote-consoles": "rule:project_manager_or_admin"
+"os_compute_api:os-console-output": "rule:project_manager_or_admin"
+```
+        </CodeGroup>
+      </Step>
+      <Step title="Validate and Apply">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+systemctl reload nova-api
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Policy Reference — Console & Lifecycle
+
+<Accordion title="Console Access Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:os-remote-consoles` | `project_member_or_admin` | Generate console URL (VNC, SPICE, serial) | `POST /servers/{id}/remote-consoles` |
+| `os_compute_api:os-console-output` | `project_member_or_admin` | Show console output log | `POST /servers/{id}/action` |
+| `os_compute_api:os-console-auth-tokens` | `context_is_admin` | Inspect console token | `GET /os-console-auth-tokens/{token}` |
+
+</Accordion>
+
+<Accordion title="Instance Creation Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:servers:create` | `project_member_or_admin` | Create instance | `POST /servers` |
+| `os_compute_api:servers:create:attach_volume` | `project_member_or_admin` | Create with volume | `POST /servers` |
+| `os_compute_api:servers:create:attach_network` | `project_member_or_admin` | Create with network | `POST /servers` |
+| `os_compute_api:servers:create:trusted_certs` | `project_member_or_admin` | Create with trusted certs | `POST /servers` |
+| `os_compute_api:servers:create:forced_host` | `context_is_admin` | Create on specified host | `POST /servers` |
+| `os_compute_api:servers:create:zero_disk_flavor` | `context_is_admin` | Create with zero-disk flavor | `POST /servers` |
+| `network:attach_external_network` | `context_is_admin` | Attach external network | `POST /servers` |
+
+</Accordion>
+
+<Accordion title="Instance Deletion Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:servers:delete` | `project_member_or_admin` | Delete instance | `DELETE /servers/{id}` |
+| `os_compute_api:os-deferred-delete:restore` | `project_member_or_admin` | Restore soft-deleted | `POST /servers/{id}/action` |
+| `os_compute_api:os-deferred-delete:force` | `project_member_or_admin` | Force delete | `POST /servers/{id}/action` |
+
+</Accordion>
+
+<Accordion title="Visibility & Keypair Policies">
+
+| Policy | Default | Description | Operation |
+|---|---|---|---|
+| `os_compute_api:servers:index` | `project_reader_or_admin` | List instances | `GET /servers` |
+| `os_compute_api:servers:detail` | `project_reader_or_admin` | List with details | `GET /servers/detail` |
+| `os_compute_api:servers:show` | `project_reader_or_admin` | Show instance | `GET /servers/{id}` |
+| `os_compute_api:os-keypairs:index` | `context_is_admin or user_id:%(user_id)s` | List keypairs | `GET /os-keypairs` |
+| `os_compute_api:os-keypairs:create` | `context_is_admin or user_id:%(user_id)s` | Create keypair | `POST /os-keypairs` |
+| `os_compute_api:os-instance-actions:list` | `project_reader_or_admin` | List actions | `GET /servers/{id}/os-instance-actions` |
+| `os_compute_api:os-instance-actions:events` | `context_is_admin` | Event details (2.51+) | `GET /servers/{id}/os-instance-actions/{req_id}` |
+
+</Accordion>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Validate Policy Syntax">
+```bash
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+```
+No output indicates valid syntax.
+  </Step>
+
+  <Step title="Simulate Policy Check">
+```bash
+oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml \
+  --rule "os_compute_api:servers:create" \
+  --target '{"project_id": "proj-123"}' \
+  --access '{"roles": ["member"], "project_id": "proj-123"}'
+```
+Returns `True` if authorized.
+  </Step>
+
+  <Step title="Verify Console Access">
+```bash
+xloud console url show --novnc <server-id>
+xloud console log show --lines 20 <server-id>
+```
+  </Step>
+
+  <Step title="Verify Denied Access">
+Authenticate as a `reader` role user:
+```bash
+xloud server create --flavor m1.small --image cirros --network my-net denied-vm
+```
+Expected: `403 Forbidden`
+  </Step>
+
+  <Step title="Identify Redundant Overrides">
+```bash
+oslopolicy-list-redundant --namespace nova --policy /etc/nova/policy.yaml
+```
+Remove rules that match defaults to keep the file minimal.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Separate Console & Lifecycle" icon="split">
+Grant console access to members while restricting create/delete to managers — allows troubleshooting without provisioning rights.
+  </Card>
+  <Card title="Enable Soft Delete" icon="trash-can-undo">
+Configure `reclaim_instance_interval` for a safety window to recover accidentally deleted instances.
+  </Card>
+  <Card title="Restrict Force Delete" icon="shield">
+Keep `os-deferred-delete:force` restricted to managers or admins to preserve the soft-delete safety net.
+  </Card>
+  <Card title="Monitor Console Tokens" icon="key">
+Console tokens grant direct VM access. Monitor `os-console-auth-tokens` usage and set short token expiration times.
+  </Card>
+</CardGroup>
+
+---
+
+## Troubleshooting
+
+<Accordion title="403 Forbidden on Console Access">
+**Resolution:**
+1. Check the user's role: `xloud role assignment list --user <user> --project <project> --names`
+2. Verify `os_compute_api:os-remote-consoles` allows their role
+3. Simulate: `oslopolicy-checker --namespace nova --policy /etc/nova/policy.yaml --rule "os_compute_api:os-remote-consoles" ...`
+4. Update policy and reload: `systemctl reload nova-api`
+</Accordion>
+
+<Accordion title="Console Connection Error">
+**Resolution:**
+1. Verify proxy is running: `systemctl status nova-novncproxy`
+2. Check proxy URL in `nova.conf`:
+```ini
+[vnc]
+novncproxy_base_url = https://console.xloud.example.com:6080/vnc_auto.html
+```
+3. Ensure firewall allows port 6080
+4. Regenerate console URL if token expired
+</Accordion>
+
+<Accordion title="403 Forbidden When Creating Instance">
+**Resolution:**
+1. Check the user's role: `xloud role assignment list --user <user> --project <project> --names`
+2. Verify `os_compute_api:servers:create` allows their role
+3. If attaching external network, verify `network:attach_external_network` policy
+4. Update policy and reload: `systemctl reload nova-api`
+</Accordion>
+
+<Accordion title="Cannot Restore Soft-Deleted Instance">
+**Resolution:**
+1. Verify `os_compute_api:os-deferred-delete:restore` allows the user's role
+2. Check that the reclaim window has not expired: review `reclaim_instance_interval` in `nova.conf`
+3. If the window has passed, the instance is permanently deleted and cannot be restored
+</Accordion>
+
+<Accordion title="Quota Exceeded When Creating Instance">
+**Resolution:**
+1. Check current usage: `xloud quota show --project <project>`
+2. Check limits: `xloud limits show`
+3. Request quota increase from admin: `xloud quota set --instances <new-limit> --project <project>`
+4. Or delete unused instances to free quota
+</Accordion>

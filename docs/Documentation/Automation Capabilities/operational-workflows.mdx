@@ -1,0 +1,307 @@
+---
+title: "Operational Workflows — Scripts on Running VMs"
+description: "Execute Bash and PowerShell scripts on provisioned and discovered VMs for operational workflows — via SSH, WinRM, metadata-driven triggers, and vendordata automation."
+---
+
+## Overview
+
+The Xloud hypervisor provides built-in automation capabilities for executing scripts on running VMs. Scripts can be delivered and executed on provisioned VMs through metadata updates, vendordata, SSH, WinRM, and operational workflow tools for ongoing operational tasks.
+
+<Card title="Operational Workflows" icon="gears">
+Deliver and execute scripts on running VMs through metadata service, config drive, and vendordata for ongoing operational tasks.
+</Card>
+
+---
+
+## Architecture / Concepts
+
+### Metadata-Driven Workflows
+
+Running VMs can poll the metadata service at `http://169.254.169.254/openstack/latest/meta_data.json` for updated key-value pairs set by operators. In-guest agents read these metadata changes to trigger operational workflows such as patching, configuration reloads, or draining traffic.
+
+### Vendordata
+
+Vendordata is operator-provided data injected into VMs. **Static vendordata** is configured in `nova.conf` and delivered to all VMs. **Dynamic vendordata** is generated at provisioning time by calling external API endpoints, enabling instance-specific tokens, certificates, or registration data that users should not have direct access to.
+
+---
+
+## Prerequisites
+
+- SSH, WinRM, or agent-based connectivity to running VMs
+- Metadata service or config drive enabled in the deployment
+- For vendordata: operator-configured vendordata providers in `nova.conf`
+
+---
+
+## Configuration
+
+### Operational Workflows (Scripts on Running VMs)
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Access VM Console">
+Navigate to **Instances** → Select the instance → **Console** tab.
+
+Execute commands directly in the VNC console.
+      </Step>
+
+      <Step title="Update Instance Metadata">
+Select instance → **Actions** → **Update Metadata**.
+
+Add key-value pairs that scripts inside the VM can read from the metadata service to trigger operational workflows.
+      </Step>
+
+      <Step title="View Console Output">
+Select instance → **Log** tab.
+
+Review script execution output and cloud-init logs.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+#### Execute Scripts via SSH
+
+    <Steps>
+      <Step title="Run Bash Script on Linux VM">
+```bash
+# Direct command execution
+ssh -i my-key.pem ubuntu@<vm-ip> 'bash -s' < maintenance.sh
+
+# Execute inline script
+ssh -i my-key.pem ubuntu@<vm-ip> << 'REMOTE'
+#!/bin/bash
+apt-get update && apt-get upgrade -y
+systemctl restart nginx
+echo "Maintenance completed at $(date)"
+REMOTE
+```
+      </Step>
+
+      <Step title="Run PowerShell Script on Windows VM">
+```powershell
+# Via WinRM
+Invoke-Command -ComputerName <vm-ip> -Credential $cred -FilePath .\maintenance.ps1
+
+# Inline script
+Invoke-Command -ComputerName <vm-ip> -Credential $cred -ScriptBlock {
+    Install-WindowsFeature -Name Web-Server
+    Restart-Service W3SVC
+    "Maintenance completed at $(Get-Date)" | Out-File C:\maintenance.log
+}
+```
+      </Step>
+    </Steps>
+
+#### Metadata-Driven Operational Workflows
+
+    <Steps>
+      <Step title="Update Instance Metadata to Trigger Workflow">
+Set metadata on a running VM that in-guest agents can read:
+```bash
+xloud server set web-server-01 \
+  --property maintenance_mode=true \
+  --property config_version=2.5 \
+  --property workflow=security-patch
+```
+      </Step>
+
+      <Step title="Read Metadata Inside the VM">
+Scripts inside the VM poll the metadata service for workflow triggers:
+```bash
+#!/bin/bash
+# Poll metadata service for workflow instructions
+WORKFLOW=$(curl -s http://169.254.169.254/openstack/latest/meta_data.json \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['meta'].get('workflow','none'))")
+
+case $WORKFLOW in
+  security-patch)
+    apt-get update && apt-get upgrade -y
+    ;;
+  config-reload)
+    systemctl reload nginx
+    ;;
+  drain)
+    # Remove from load balancer, stop accepting traffic
+    systemctl stop nginx
+    ;;
+esac
+```
+      </Step>
+
+      <Step title="Read Metadata via Config Drive (Offline)">
+```bash
+# If config drive is mounted
+python3 -c "
+import json
+meta = json.load(open('/mnt/config/openstack/latest/meta_data.json'))
+workflow = meta['meta'].get('workflow', 'none')
+print(f'Current workflow: {workflow}')
+"
+```
+      </Step>
+    </Steps>
+
+#### Vendordata-Driven Automation
+
+    <Steps>
+      <Step title="Configure Dynamic Vendordata (Admin)">
+Edit `nova.conf` to configure vendordata providers:
+```bash
+vi /etc/nova/nova.conf
+```
+
+```ini
+[api]
+vendordata_providers = StaticJSON, DynamicJSON
+
+[vendordata_dynamic_auth]
+auth_url = https://identity.xloud.local:5000/v3
+auth_type = password
+username = nova-vendordata
+password = <service-password>
+project_name = services
+user_domain_name = Default
+project_domain_name = Default
+
+[vendordata_dynamic_targets]
+# External API endpoints called during provisioning
+join_ad = https://ad-automation.xloud.local/v1/register
+install_agent = https://monitoring.xloud.local/v1/bootstrap
+```
+
+Restart:
+```bash
+systemctl restart nova-api
+```
+      </Step>
+
+      <Step title="Retrieve Vendordata Inside VM">
+```bash
+# Static vendordata
+curl -s http://169.254.169.254/openstack/latest/vendor_data.json
+
+# Dynamic vendordata (from external APIs)
+curl -s http://169.254.169.254/openstack/latest/vendor_data2.json
+```
+
+Example response:
+```json
+{
+  "join_ad": {
+    "domain": "xloud.local",
+    "token": "eyJhbGci...",
+    "ou": "OU=Servers,DC=xloud,DC=local"
+  },
+  "install_agent": {
+    "agent_url": "https://monitoring.xloud.local/agent.deb",
+    "api_key": "mon-key-12345"
+  }
+}
+```
+
+        <Tip>
+Dynamic vendordata is generated at provisioning time by calling external APIs. Use this to provide instance-specific tokens, certificates, or registration data that users should not have direct access to.
+        </Tip>
+      </Step>
+    </Steps>
+
+#### Batch Script Execution Across Multiple VMs
+
+    <Steps>
+      <Step title="Execute Across VM Fleet">
+```bash
+# Get all production VM IPs
+IPS=$(xloud server list --tags production -f value -c Networks \
+  | grep -oP '[\d.]+')
+
+# Execute script on all VMs
+for IP in $IPS; do
+  echo "=== Patching $IP ==="
+  ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@$IP \
+    'sudo apt-get update && sudo apt-get upgrade -y' &
+done
+wait
+echo "Fleet patching complete"
+```
+      </Step>
+
+      <Step title="Set Workflow Metadata Across Fleet">
+```bash
+# Set maintenance mode on all production VMs
+for SERVER in $(xloud server list --tags production -f value -c ID); do
+  xloud server set $SERVER --property workflow=security-patch
+done
+```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation / Verification
+
+<Steps>
+  <Step title="Verify Metadata Access">
+```bash
+# Full metadata
+curl -s http://169.254.169.254/openstack/latest/meta_data.json | python3 -m json.tool
+
+# Custom properties
+curl -s http://169.254.169.254/openstack/latest/meta_data.json \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['meta'])"
+
+# Vendordata
+curl -s http://169.254.169.254/openstack/latest/vendor_data2.json
+```
+  </Step>
+
+  <Step title="Verify from Outside the VM">
+```bash
+# Check console output for script execution
+xloud console log show <server-id> --lines 50
+
+# Verify custom metadata was set
+xloud server show <server-id> -c properties
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<Card title="Use Vendordata for Secrets" icon="key">
+Deliver tokens, certificates, and registration credentials via dynamic vendordata rather than user data. Users cannot see vendordata configuration.
+</Card>
+
+<Warning>
+Never embed production secrets (passwords, API keys) directly in user data scripts. User data is accessible to anyone with project-level read access. Use the Xloud Credential Store (Key Manager) or vendordata for sensitive values.
+</Warning>
+
+---
+
+## Troubleshooting
+
+<Accordion title="Metadata Service Unreachable Inside VM">
+**Symptom:** `curl http://169.254.169.254` times out from inside the VM.
+
+**Resolution:**
+
+1. Verify the metadata proxy is running on the network node:
+```bash
+systemctl status neutron-metadata-agent
+```
+2. Verify the route exists inside the VM:
+```bash
+ip route | grep 169.254
+```
+3. Use config drive as a fallback:
+```bash
+xloud server create --config-drive true --user-data script.sh ...
+```
+4. Check security group rules — metadata traffic may be blocked
+</Accordion>

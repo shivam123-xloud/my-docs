@@ -1,0 +1,166 @@
+---
+title: "Tagging — Add / Delete / Edit"
+description: "Add, delete, and edit tags on VMs for organization, filtering, and automation on the Xloud Compute hypervisor."
+---
+
+## Prerequisites
+
+- Xloud Compute service deployed with hypervisor nodes operational
+- Xloud Identity (Keystone) configured with appropriate user roles
+- API microversion **2.52+** for tag operations
+
+---
+
+## Concepts
+
+Tags are Unicode labels (up to 60 characters each) attached to VMs for organization, filtering, and automation. Each VM supports up to **50 tags**.
+
+**Tag restrictions:**
+- Must be non-empty
+- `/` and `,` characters are not allowed
+- Maximum 60 characters per tag
+- Maximum 50 tags per VM
+- Available from API microversion **2.52+**
+
+---
+
+## Add Tags
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="During Creation">
+In the **Launch Instance** wizard → **Metadata** step → Add tags in the tags field.
+      </Step>
+      <Step title="On Existing VM">
+Select instance → **Actions** → **Edit Tags** → Add new tags → **Save**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+Add a single tag:
+```bash
+xloud server set <server-id> --tag production
+```
+Returns `HTTP 201` if the tag is new, `HTTP 204` if it already exists.
+
+Add multiple tags:
+```bash
+xloud server set <server-id> --tag production --tag web-tier --tag region-east
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Delete Tags
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Edit Tags** → Remove tags → **Save**.
+  </Tab>
+  <Tab title="CLI">
+Delete a single tag:
+```bash
+xloud server unset <server-id> --tag production
+```
+
+Delete all tags:
+```bash
+xloud server unset <server-id> --tag-all
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Edit Tags (Replace All)
+
+Replace the entire tag set with a new list:
+
+<Tabs>
+  <Tab title="GUI">
+Select instance → **Actions** → **Edit Tags** → Clear existing tags → Add new tags → **Save**.
+  </Tab>
+  <Tab title="CLI">
+```bash
+xloud server set <server-id> --tag-replace production,web-tier,v2
+```
+Replaces all existing tags with the specified list.
+  </Tab>
+</Tabs>
+
+---
+
+## Check & List Tags
+
+<Tabs>
+  <Tab title="GUI">
+Instance detail page displays all assigned tags.
+  </Tab>
+  <Tab title="CLI">
+List all tags:
+```bash
+xloud server show <server-id> -c tags
+```
+
+Check if a specific tag exists:
+```bash
+xloud server tag check <server-id> <tag>
+```
+Returns `HTTP 204` if the tag exists.
+  </Tab>
+</Tabs>
+
+---
+
+## Filter VMs by Tags
+
+```bash
+# VMs with ALL specified tags
+xloud server list --tags production,web-tier
+
+# VMs with ANY specified tag
+xloud server list --tags-any production,staging
+
+# VMs WITHOUT specified tags
+xloud server list --not-tags decommissioned
+
+# VMs without ANY of the specified tags
+xloud server list --not-tags-any test,dev
+```
+
+---
+
+## Tag API Reference
+
+| Operation | Method | Endpoint | Description |
+|---|---|---|---|
+| List tags | `GET` | `/servers/{id}/tags` | Returns all tags |
+| Check tag | `GET` | `/servers/{id}/tags/{tag}` | Check if tag exists |
+| Add tag | `PUT` | `/servers/{id}/tags/{tag}` | Add single tag |
+| Replace all | `PUT` | `/servers/{id}/tags` | Replace entire tag set |
+| Delete tag | `DELETE` | `/servers/{id}/tags/{tag}` | Remove single tag |
+| Delete all | `DELETE` | `/servers/{id}/tags` | Remove all tags |
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Tags">
+```bash
+xloud server show <server-id> -c tags
+```
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Tag Consistently" icon="tags">
+Establish a tagging convention (environment, team, application) for filtering, automation, and cost tracking.
+  </Card>
+</CardGroup>
