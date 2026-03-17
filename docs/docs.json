@@ -41,7 +41,8 @@
             "group": "Documentation",
             "pages": [
               "Documentation/create-vm",
-              "Documentation/access-corrupted-vm-data"
+              "Documentation/access-corrupted-vm-data",
+              "Documentation/session-log"
             ]
           },
           {
