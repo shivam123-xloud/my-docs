@@ -1,0 +1,333 @@
+---
+title: "Volume Management"
+description: "Attach, detach, and manage persistent volumes on Xloud Compute instances — including multi-attach volumes and volume attachment health operations."
+---
+
+## Overview
+
+Xloud Compute integrates with the Block Storage service to attach persistent volumes to running instances. Volumes provide durable storage that persists independently of instance lifecycle — data is retained when an instance is stopped, restarted, or terminated.
+
+<CardGroup cols={2}>
+  <Card title="Standard Attachment" icon="hard-drive">
+    A single volume attached to a single instance. Default mode — supported by all hypervisor drivers.
+  </Card>
+  <Card title="Multi-Attach" icon="share-nodes">
+    A single volume attached simultaneously to multiple instances. Enables shared-disk clustering (e.g., Oracle RAC, Pacemaker). Requires cluster-aware filesystems.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Multi-attach volumes must be used with cluster-aware filesystems (e.g., GFS2, OCFS2). Mounting a multi-attach volume with a standard filesystem (ext4, xfs) from multiple instances simultaneously will cause filesystem corruption.
+</Warning>
+
+---
+
+## Multi-Attach Requirements
+
+| Component | Minimum Version |
+|---|---|
+| Xloud Compute API microversion | 2.60 |
+| Cinder (Block Storage) | 12.0.0 |
+| nova-compute service | Queens release |
+| libvirt | 3.10+ |
+| QEMU | 2.10+ (or below 2.10 — check driver notes) |
+
+<Info>
+  Swapping an **in-use** multi-attach volume (replacing it on a live instance) is not supported. Detach from all instances before performing a volume swap.
+</Info>
+
+---
+
+## Prerequisites
+
+- Instance must be in `ACTIVE` or `SHUTOFF` state for attachment operations
+- Target volume must be in `available` state (for standard attachment) or `in-use` with multi-attach enabled (for multi-attach)
+- For multi-attach: volume type must have `multiattach` capability enabled
+- Valid Xloud credentials with compute and block storage access
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Attach a Volume to an Instance">
+        Navigate to **Project → Compute → Instances**.
+
+        In the **Actions** dropdown for the target instance, select **Attach Volume**.
+
+        | Field | Description |
+        |---|---|
+        | Volume | Select the volume to attach (only `available` volumes are shown) |
+        | Device Name | Leave blank for auto-assignment, or specify (e.g., `/dev/vdb`) |
+
+        Click **Attach Volume**. The volume status changes to `in-use`.
+      </Step>
+
+      <Step title="Detach a Volume">
+        Navigate to **Project → Volumes → Volumes**.
+
+        Find the attached volume. In **Actions**, select **Manage Attachments**, then click **Detach Volume** next to the target instance.
+
+        <Warning>
+          Always unmount the volume from within the instance OS before detaching via the API. Detaching without unmounting may cause filesystem errors.
+        </Warning>
+      </Step>
+
+      <Step title="Create a Volume Snapshot">
+        In **Project → Volumes → Volumes**, select **Create Snapshot** from the Actions dropdown.
+
+        | Field | Description |
+        |---|---|
+        | Snapshot Name | Descriptive name (e.g., `vol-db-pre-upgrade`) |
+        | Description | Optional context for the snapshot |
+
+        The volume does not need to be detached to snapshot — but for data consistency, quiesce the application or use `--force` with the CLI.
+      </Step>
+
+      <Step title="Boot an Instance from a Volume">
+        Navigate to **Project → Compute → Instances → Launch Instance**.
+
+        On the **Source** tab:
+        - Set **Select Boot Source** to `Volume`
+        - Select the target volume
+
+        The instance will boot directly from the volume. The volume persists after instance deletion if **Delete Volume on Instance Delete** is unchecked.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Standard Volume Operations
+
+    <Steps>
+      <Step title="Attach a Volume">
+        <CodeGroup>
+        ```bash title="Attach volume to instance"
+        openstack server add volume <instance-id> <volume-id>
+        ```
+
+        ```bash title="Attach with specific device path"
+        openstack server add volume --device /dev/vdb <instance-id> <volume-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="List Volume Attachments">
+        <CodeGroup>
+        ```bash title="List volumes attached to an instance"
+        openstack server volume list <instance-id>
+        ```
+
+        ```bash title="Show detailed attachment info"
+        openstack volume attachment list --volume-id <volume-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Detach a Volume">
+        First, unmount from inside the instance:
+
+        <CodeGroup>
+        ```bash title="Inside the instance — unmount"
+        umount /dev/vdb
+        ```
+        </CodeGroup>
+
+        Then detach via API:
+
+        <CodeGroup>
+        ```bash title="Detach volume"
+        openstack server remove volume <instance-id> <volume-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Boot from Volume">
+        <CodeGroup>
+        ```bash title="Boot instance directly from a volume"
+        openstack server create \
+          --flavor m1.medium \
+          --volume <volume-id> \
+          --network <network-id> \
+          --key-name <keypair> \
+          instance-from-volume
+        ```
+
+        ```bash title="Boot from image and create a new root volume"
+        openstack server create \
+          --flavor m1.medium \
+          --image ubuntu-24.04-amd64 \
+          --boot-from-volume 50 \
+          --network <network-id> \
+          --key-name <keypair> \
+          instance-with-root-volume
+        ```
+        </CodeGroup>
+
+        <Tip>
+          `--boot-from-volume <size-gb>` creates a new Cinder volume from the image and boots from it. The volume persists after instance deletion, enabling volume-based recovery without snapshots.
+        </Tip>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Multi-Attach Operations
+
+    <Steps>
+      <Step title="Create a Multi-Attach Volume">
+        <CodeGroup>
+        ```bash title="Create volume with multi-attach enabled"
+        openstack volume create \
+          --size 100 \
+          --type <multiattach-volume-type> \
+          --multi-attach \
+          shared-cluster-vol
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Attach to Multiple Instances">
+        <CodeGroup>
+        ```bash title="Attach to first instance"
+        openstack server add volume <instance-1-id> <volume-id>
+        ```
+
+        ```bash title="Attach to second instance"
+        openstack server add volume <instance-2-id> <volume-id>
+        ```
+        </CodeGroup>
+
+        Confirm both attachments:
+
+        <CodeGroup>
+        ```bash title="Verify multi-attach state"
+        openstack volume show <volume-id> -c attachments -c multiattach
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Attachment Health Management
+
+    Dangling or stale volume attachments can occur after unexpected instance termination or host failure. Use `nova-manage` to inspect and refresh attachment state:
+
+    <Steps>
+      <Step title="List All Volume Attachments">
+        <CodeGroup>
+        ```bash title="Show all attachments for an instance"
+        nova-manage attachment list --instance-uuid <instance-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Refresh a Stale Attachment">
+        <CodeGroup>
+        ```bash title="Refresh attachment connector info"
+        nova-manage attachment refresh <attachment-id>
+        ```
+        </CodeGroup>
+
+        <Note>
+          A hard reboot of the affected instance (`openstack server reboot --hard <instance-id>`) will also trigger attachment re-synchronization and resolve most dangling attachment states.
+        </Note>
+      </Step>
+    </Steps>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Volume Status After Attach">
+    <CodeGroup>
+    ```bash title="Check volume attachment status"
+    openstack volume show <volume-id> -c status -c attachments
+    ```
+    </CodeGroup>
+
+    `status` must be `in-use` and `attachments` must list the target instance ID.
+  </Step>
+  <Step title="Verify Device Inside Instance">
+    SSH into the instance and confirm the block device is visible:
+
+    <CodeGroup>
+    ```bash title="List block devices inside instance"
+    lsblk
+    ```
+    </CodeGroup>
+
+    The attached volume should appear as `/dev/vdb` (or the specified device path).
+  </Step>
+  <Step title="Validate Multi-Attach from Both Instances">
+    From each attached instance, confirm the device is present and the cluster filesystem is mounted and accessible.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Unmount Before Detach">
+    Detaching a mounted volume without unmounting it first causes the filesystem to detect an unclean unmount on the next mount. For databases and write-heavy workloads, this may require fsck or journal replay — and in worst cases, data loss.
+  </Accordion>
+  <Accordion title="Use Volume-Backed Root Disks for Critical Instances">
+    Booting from a Cinder volume (rather than ephemeral local disk) enables snapshot-based backups of the root disk, live migration without shared storage concerns, and root disk persistence across instance rebuilds.
+  </Accordion>
+  <Accordion title="Multi-Attach Cluster Design">
+    Use multi-attach volumes exclusively with applications designed for shared-disk access (cluster databases, HA storage services). Always benchmark the cluster filesystem's fencing and locking behavior before production use — split-brain on a multi-attach volume is data-destructive.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Volume stuck in 'attaching' state">
+    **Cause:** The `nova-compute` service on the target host failed to complete the attachment, or the Block Storage service timed out.
+
+    **Resolution:** Reset the volume state and retry:
+
+    <CodeGroup>
+    ```bash title="Reset volume state"
+    openstack volume set --state available <volume-id>
+    ```
+    </CodeGroup>
+
+    Check `nova-compute` logs on the target host for the root cause before retrying.
+  </Accordion>
+  <Accordion title="Device not visible inside instance after attach">
+    **Cause:** The guest OS did not detect the new block device. Some older kernels require a rescan.
+
+    **Resolution:** From inside the instance:
+
+    <CodeGroup>
+    ```bash title="Rescan SCSI bus"
+    echo "- - -" > /sys/class/scsi_host/host0/scan
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Multi-attach volume shows 'error' on second attach">
+    **Cause:** The volume type does not have `multiattach` capability, or the compute API microversion is below 2.60.
+
+    **Resolution:** Confirm volume type supports multi-attach and that the API client is using microversion 2.60+:
+
+    <CodeGroup>
+    ```bash title="Check volume type capabilities"
+    openstack volume type show <volume-type> -c extra_specs
+    ```
+    </CodeGroup>
+
+    The `multiattach` extra spec must be set to `<is> True`.
+  </Accordion>
+</AccordionGroup>

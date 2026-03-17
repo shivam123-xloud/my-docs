@@ -1,0 +1,318 @@
+---
+title: "Failure Recovery"
+description: "Restore instance availability after an unexpected compute node failure through evacuation, service restart, and manual recovery procedures."
+---
+
+## Overview
+
+When a compute node fails unexpectedly — hardware fault, kernel panic, or network partition — instances on that node become unavailable. The recovery path depends on the failure mode and storage configuration.
+
+<Warning>
+  Confirm the failed host is genuinely non-operational before initiating any recovery procedure. A host that is partially alive (network partition, hung kernel) but still running instances can cause split-brain and data corruption if recovery actions are taken concurrently.
+</Warning>
+
+---
+
+## Recovery Decision Tree
+
+```
+Compute node unresponsive
+         │
+         ├─ Can the host be power-cycled or fenced? ──Yes──► Fence/power off → Evacuate
+         │
+         ├─ Is nova-compute service DOWN in service list? ──Yes──► Proceed to evacuation
+         │
+         ├─ Is the host reachable but nova-compute crashed? ──Yes──► Restart nova-compute
+         │
+         └─ Is the host reachable and nova-compute running? ──Yes──► Manual DB recovery
+```
+
+---
+
+## Path 1 — Evacuation (Recommended)
+
+Evacuation is the standard recovery path for genuine host failure. It rebuilds instances on healthy hosts while preserving identity (ID, name, IP, attached volumes).
+
+<Steps>
+  <Step title="Fence the Failed Host">
+    Power off or fence the failed node via IPMI/BMC before proceeding. This eliminates the risk of a partially recovered host coming back online mid-evacuation.
+
+    <CodeGroup>
+    ```bash title="Example: IPMI power off"
+    ipmitool -H <bmc-ip> -U admin -P <password> chassis power off
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Confirm Host is Marked Down">
+    <CodeGroup>
+    ```bash title="Check service state"
+    openstack compute service list --host <failed-hostname> --service nova-compute
+    ```
+    </CodeGroup>
+
+    `State` must show `down` before proceeding.
+  </Step>
+
+  <Step title="List Instances on the Failed Host">
+    <CodeGroup>
+    ```bash title="Find affected instances"
+    openstack server list --all-projects \
+      --host <failed-hostname> \
+      -c ID -c Name -c Status
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Evacuate Instances">
+    <CodeGroup>
+    ```bash title="Evacuate a single instance"
+    openstack server evacuate <instance-id>
+    ```
+
+    ```bash title="Bulk evacuate all instances from failed host"
+    nova host-evacuate <failed-hostname>
+    ```
+
+    ```bash title="Bulk evacuate to a specific target host"
+    nova host-evacuate --target-host <target-hostname> <failed-hostname>
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Monitor Recovery">
+    <CodeGroup>
+    ```bash title="Watch instance status"
+    openstack server list --all-projects -c Name -c Status | grep -v ACTIVE
+    ```
+    </CodeGroup>
+
+    All evacuated instances must reach `ACTIVE`. Instances stuck in `ERROR` require individual investigation via console log.
+  </Step>
+
+  <Step title="Disable the Failed Host">
+    <CodeGroup>
+    ```bash title="Prevent new scheduling to failed host"
+    openstack compute service set \
+      --disable \
+      --disable-reason "Hardware failure - under investigation" \
+      <failed-hostname> nova-compute
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Path 2 — Service Restart (nova-compute Crash)
+
+If the host is reachable but `nova-compute` has crashed, a service restart restores the host to the scheduler without requiring evacuation.
+
+<Steps>
+  <Step title="Restart the Service">
+    <CodeGroup>
+    ```bash title="On the affected compute host"
+    systemctl restart nova-compute
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Re-registration">
+    <CodeGroup>
+    ```bash title="Check service state from management node"
+    openstack compute service list --host <hostname> --service nova-compute
+    ```
+    </CodeGroup>
+
+    `State` must return to `up`. Running instances resume without interruption.
+  </Step>
+</Steps>
+
+---
+
+## Path 3 — Manual Database Recovery
+
+<Warning>
+  Direct database manipulation is a last resort and carries risk of data corruption if performed incorrectly. Attempt evacuation (Path 1) and service restart (Path 2) first. Take a full database backup before executing any manual SQL.
+</Warning>
+
+Use this path when evacuation is not possible and instances need to be manually reassigned to a new host at the database level.
+
+<Steps>
+  <Step title="Identify Affected Instances">
+    <CodeGroup>
+    ```bash title="List instances on failed host"
+    openstack server list --all-projects --host <failed-hostname> -f value -c ID -c Name
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Reassign Instance Host in Database">
+    Connect to the Nova database (credentials in `/etc/nova/nova.conf` under `[database]`):
+
+    <CodeGroup>
+    ```sql title="Reassign instance to a new host"
+    UPDATE instances
+    SET host = '<new-hostname>'
+    WHERE uuid = '<instance-uuid>';
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Update Hypervisor XML (libvirt)">
+    On the destination host, update the instance's `libvirt.xml`:
+
+    - Set the DHCP server IP to the new host's management IP
+    - Set the VNC listen address to `0.0.0.0`
+
+    <CodeGroup>
+    ```bash title="Locate instance XML on destination host"
+    ls /var/lib/nova/instances/<instance-uuid>/
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Reboot the Instance via API">
+    <CodeGroup>
+    ```bash title="Trigger API-level reboot"
+    openstack server reboot --hard <instance-id>
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Restore Network Filters (if required)">
+    If network connectivity does not restore after reboot, recreate the network filters via `virsh`:
+
+    <CodeGroup>
+    ```bash title="On the destination host — recreate network filters"
+    virsh nwfilter-list
+    virsh nwfilter-define /etc/libvirt/nwfilter/<filter>.xml
+    ```
+    </CodeGroup>
+
+    Then restart Compute services on the destination host:
+
+    <CodeGroup>
+    ```bash title="Restart nova-compute on destination"
+    systemctl restart nova-compute
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## UID/GID Mismatch Recovery
+
+UID and GID mismatches across compute nodes cause instance boot failures and live migration errors on shared filesystems. This occurs when `nova-compute` is installed at different times across nodes, resulting in different system-assigned UIDs.
+
+<Steps>
+  <Step title="Identify the Mismatch">
+    <CodeGroup>
+    ```bash title="Compare nova UID across hosts"
+    # Run on each compute host
+    id nova
+    id libvirt-qemu
+    ```
+    </CodeGroup>
+
+    All hosts must have identical `nova` UID, `libvirt-qemu` UID, `nova` GID, and `libvirtd` GID.
+  </Step>
+
+  <Step title="Standardize UIDs and GIDs">
+    On each affected host, update `/etc/passwd` and `/etc/group` to use the agreed-upon values. Then reassign file ownership:
+
+    <CodeGroup>
+    ```bash title="Stop services before changing ownership"
+    systemctl stop nova-compute libvirtd
+    ```
+
+    ```bash title="Reassign file ownership to corrected nova UID"
+    find /var/lib/nova -uid <old-uid> -exec chown nova {} \;
+    find /var/lib/nova -gid <old-gid> -exec chgrp nova {} \;
+    ```
+
+    ```bash title="Restart services"
+    systemctl start nova-compute libvirtd
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Power Loss / Disaster Recovery
+
+After a datacenter power event affecting multiple hosts, follow this sequence to restore the compute cluster:
+
+<Steps>
+  <Step title="Restore Infrastructure Services First">
+    Bring up services in dependency order:
+    1. Database (MariaDB/PostgreSQL)
+    2. Message broker (RabbitMQ)
+    3. Controller node services (keystone, nova-api, nova-scheduler)
+    4. Storage services (Ceph, iSCSI)
+    5. Compute nodes (`nova-compute`)
+  </Step>
+
+  <Step title="Verify iSCSI Sessions">
+    For deployments using iSCSI-backed volumes, re-establish sessions on affected hosts:
+
+    <CodeGroup>
+    ```bash title="Reconnect iSCSI sessions"
+    iscsiadm --mode node --loginall=automatic
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Clear Stale Volume States">
+    After power loss, volumes may be stuck in `attaching` or `detaching` states. Reset them:
+
+    <CodeGroup>
+    ```bash title="Reset stuck volume state"
+    openstack volume set --state available <volume-id>
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Reboot Affected Instances">
+    <CodeGroup>
+    ```bash title="Hard reboot instances that did not auto-recover"
+    openstack server reboot --hard <instance-id>
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Reattach Volumes if Detached">
+    <CodeGroup>
+    ```bash title="Reattach volume to instance"
+    openstack server add volume <instance-id> <volume-id>
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm All Instances Recovered">
+    <CodeGroup>
+    ```bash title="Find any instances not in ACTIVE or SHUTOFF state"
+    openstack server list --all-projects -c ID -c Name -c Status -c Host \
+      | grep -v ACTIVE | grep -v SHUTOFF
+    ```
+    </CodeGroup>
+
+    Any instance in `ERROR` or `REBUILDING` requires individual investigation via its console log.
+  </Step>
+  <Step title="Confirm Failed Host is Disabled">
+    <CodeGroup>
+    ```bash title="Verify failed host status"
+    openstack compute service list --host <failed-hostname> --service nova-compute
+    ```
+    </CodeGroup>
+
+    `Status` must show `disabled` to prevent new workloads landing on the unstable host.
+  </Step>
+</Steps>

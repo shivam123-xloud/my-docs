@@ -1,0 +1,131 @@
+---
+title: "Cluster Lifecycle Management"
+description: "Manage the Xloud compute fleet across its full lifecycle — onboarding new nodes, scaling capacity, decommissioning hosts, and recovering from compute node failures."
+---
+
+## Overview
+
+Cluster lifecycle management covers the operational workflows that keep the Xloud Compute fleet healthy and right-sized. This includes adding compute nodes when capacity is needed, safely removing them for maintenance or decommissioning, and recovering workloads when a node fails unexpectedly.
+
+<CardGroup cols={3}>
+  <Card title="Capacity Expansion" icon="circle-plus">
+    Add new compute nodes to the cluster to increase available vCPU, RAM, and storage capacity without disrupting running workloads.
+  </Card>
+  <Card title="Controlled Shrink" icon="circle-minus">
+    Safely evacuate and remove compute nodes from the active scheduler pool for maintenance, hardware refresh, or permanent decommissioning.
+  </Card>
+  <Card title="Failure Recovery" icon="rotate">
+    Restore instance availability after an unexpected compute node failure through evacuation, manual recovery, and service restoration procedures.
+  </Card>
+</CardGroup>
+
+---
+
+## Prerequisites
+
+- `python-openstackclient` installed and configured on the management node
+- Administrative credentials configured as environment variables:
+
+<CodeGroup>
+```bash title="~/.bashrc or clouds.yaml — admin credentials"
+export OS_USERNAME=admin
+export OS_PASSWORD=<admin-password>
+export OS_PROJECT_NAME=admin
+export OS_AUTH_URL=http://<controller>:5000/v3
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_IDENTITY_API_VERSION=3
+```
+</CodeGroup>
+
+Verify CLI access:
+
+<CodeGroup>
+```bash title="Confirm CLI is operational"
+openstack help
+openstack compute service list
+```
+</CodeGroup>
+
+<Info>
+  All `openstack` commands are available to any authenticated user, but compute service management and host operations are restricted to users with the `admin` role by the Identity service policy.
+</Info>
+
+---
+
+## Cluster Health Overview
+
+Before any expansion or shrink operation, establish a baseline view of the current cluster state.
+
+<CodeGroup>
+```bash title="View all compute services and their state"
+openstack compute service list --service nova-compute
+```
+
+```bash title="View hypervisor capacity summary"
+openstack hypervisor stats show
+```
+
+```bash title="List all hypervisors with resource detail"
+openstack hypervisor list --long
+```
+
+```bash title="Show per-host capacity"
+openstack hypervisor show <hostname> \
+  -c vcpus -c vcpus_used \
+  -c memory_mb -c memory_mb_used \
+  -c free_disk_gb -c running_vms
+```
+</CodeGroup>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Cluster Health Check">
+    <CodeGroup>
+    ```bash title="All compute services up"
+    openstack compute service list --service nova-compute
+    ```
+
+    ```bash title="Overall capacity summary"
+    openstack hypervisor stats show
+    ```
+    </CodeGroup>
+
+    All intended hosts must show `State: up` and `Status: enabled`.
+  </Step>
+  <Step title="No Instances in Error State">
+    <CodeGroup>
+    ```bash title="Find any instances not in ACTIVE state"
+    openstack server list --all-projects -c ID -c Name -c Status -c Host \
+      | grep -v ACTIVE | grep -v SHUTOFF
+    ```
+    </CodeGroup>
+
+    Any instance in `ERROR` or `REBUILDING` after a recovery operation requires individual investigation via its console log.
+  </Step>
+  <Step title="Verify Scheduler is Routing Correctly">
+    Launch a test instance after an expansion and confirm it lands on the new host. Confirm a shrunk host receives no new placements after being disabled.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Disable Before Draining">
+    Disable the compute service on a node before migrating instances off it. Without disabling, the scheduler may continue placing new instances on the node while you are draining it, creating a moving target.
+  </Accordion>
+  <Accordion title="Fence Before Evacuating">
+    Physical fencing (IPMI power off) before evacuation is non-negotiable in production environments. A partially alive host that comes back online after evacuation has already started can result in the same instance running on two hosts — causing network conflicts and data corruption.
+  </Accordion>
+  <Accordion title="Maintain Database Backups">
+    The Nova and Cinder databases are the source of truth for instance state and volume attachments. For disaster recovery scenarios, a recent database backup is essential. Without it, manual SQL recovery becomes significantly harder. Schedule automated daily database backups.
+  </Accordion>
+  <Accordion title="Standardize nova UID/GID at Deployment">
+    Set explicit, consistent UID and GID values for `nova` and `libvirt-qemu` system accounts in your provisioning automation (Ansible, Chef, Puppet). This prevents UID mismatch issues from ever arising in the first place — the problem is exclusively caused by OS-assigned UIDs differing across install times.
+  </Accordion>
+</AccordionGroup>

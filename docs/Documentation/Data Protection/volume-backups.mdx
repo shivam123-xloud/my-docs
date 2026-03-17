@@ -1,0 +1,564 @@
+---
+title: "Volume Backup & Restore"
+description: "Create, manage, and restore backups of Xloud Block Storage volumes and snapshots using integrated backup drivers and Ceph RBD snapshot scheduling."
+---
+
+## Overview
+
+Xloud Block Storage provides a built-in backup service that creates point-in-time copies of volumes and stores them in a configurable backend — Swift object storage or NFS. Backups are independent of the source volume: they persist even after the volume is deleted and can be restored to any volume in the cluster.
+
+Complementing service-level backups, Ceph RBD snapshot scheduling provides automated, recurring point-in-time snapshots at the storage layer for RBD-backed volumes.
+
+<CardGroup cols={3}>
+  <Card title="Full Backups" icon="database">
+    Complete copy of volume data to the backup backend. Required as the baseline before incremental backups can be created.
+  </Card>
+  <Card title="Incremental Backups" icon="code-branch">
+    Only changes since the last backup are transferred. Faster, smaller, and lower-bandwidth than full backups.
+  </Card>
+  <Card title="RBD Snapshot Scheduling" icon="clock">
+    Automated Ceph-layer snapshots on a configurable interval. Lightweight, storage-efficient, and independent of the Block Storage API.
+  </Card>
+</CardGroup>
+
+<Warning>
+  The Block Storage database must be backed up independently and regularly. Without a valid database backup, volume backup records cannot be recovered even if the backup data itself is intact.
+</Warning>
+
+---
+
+## Architecture
+
+| Component | Role |
+|---|---|
+| `cinder-backup` service | Orchestrates backup and restore operations |
+| Swift backend (default) | Stores backup data as objects in chunked format — S3-compatible |
+| NFS backend | Stores backup data as files on an NFS share |
+| CIFS backend | Stores backup data on a Windows/Samba-compatible file share |
+| Ceph RBD | Optional storage-layer snapshots and scheduled snapshot automation |
+
+### Backup vs Snapshot vs RBD Snapshot
+
+| Feature | Volume Backup | Volume Snapshot | RBD Snapshot |
+|---|---|---|---|
+| Location | External backend (Swift/NFS) | Same Cinder backend | Ceph storage layer |
+| Survives volume deletion | Yes | No | No (tied to RBD image) |
+| Incremental support | Yes | No | Yes (native CoW) |
+| Scheduling | Manual / cron | Manual | Native scheduler |
+| Restore target | Any volume | New volume only | Same RBD image |
+| Use case | DR, long-term retention | Fast rollback, cloning | Frequent automated checkpoints |
+
+---
+
+## Prerequisites
+
+- `cinder-backup` service installed and running on at least one node
+- Backup backend configured in `cinder.conf` (Swift or NFS)
+- For incremental backups: at least one full backup must exist for the target volume
+- For forced backup of attached volumes: instance must tolerate brief I/O disruption (crash-consistent backup)
+- For RBD scheduled snapshots: Ceph cluster with `rbd-support` module enabled
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Navigate to Volumes">
+        Go to **Project → Volumes → Volumes**.
+      </Step>
+      <Step title="Create a Backup">
+        In the **Actions** dropdown for the target volume, select **Create Backup**.
+
+        | Field | Description |
+        |---|---|
+        | Backup Name | Descriptive name (e.g., `vol-db-primary-2026-03-17`) |
+        | Container | Optional Swift container name. Leave blank to use the default. |
+        | Incremental | Enable to back up only changes since the last backup |
+        | Force | Enable to back up a volume currently attached to an instance |
+        | Snapshot | Optionally select a specific snapshot to back up instead of live data |
+      </Step>
+      <Step title="Monitor Backup Status">
+        Navigate to **Project → Volumes → Backups**. The backup will show status `creating` then transition to `available` on completion.
+      </Step>
+      <Step title="Restore a Backup">
+        In the Backups list, open the **Actions** dropdown for the target backup and select **Restore Backup**.
+
+        Choose to restore to an existing volume or create a new one. The target volume must be equal to or larger than the original.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Volume Backups
+
+    <Steps>
+      <Step title="Create a Full Backup">
+        <CodeGroup>
+        ```bash title="Full backup of an available volume"
+        openstack volume backup create \
+          --name vol-db-primary-2026-03-17 \
+          <volume-id>
+        ```
+
+        ```bash title="Force backup of an attached volume (crash-consistent)"
+        openstack volume backup create \
+          --name vol-db-primary-2026-03-17 \
+          --force \
+          <volume-id>
+        ```
+        </CodeGroup>
+
+        <Warning>
+          `--force` backs up a volume while it is attached to a running instance. The backup is crash-consistent — equivalent to pulling the power plug. Applications with write caches (databases) should flush before forcing a backup, or use application-level quiescing.
+        </Warning>
+      </Step>
+
+      <Step title="Create an Incremental Backup">
+        <CodeGroup>
+        ```bash title="Incremental backup (requires prior full backup)"
+        openstack volume backup create \
+          --name vol-db-primary-incr-2026-03-17 \
+          --incremental \
+          <volume-id>
+        ```
+        </CodeGroup>
+
+        <Note>
+          Incremental backups chain to the most recent backup. If the parent backup is deleted, all dependent incremental backups become unrestorable. Always retain at least one full backup.
+        </Note>
+      </Step>
+
+      <Step title="Back Up a Specific Snapshot">
+        <CodeGroup>
+        ```bash title="Back up a snapshot instead of live volume data"
+        openstack volume backup create \
+          --snapshot <snapshot-id> \
+          --name snap-backup-2026-03-17 \
+          <volume-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="List and Inspect Backups">
+        <CodeGroup>
+        ```bash title="List all backups"
+        openstack volume backup list
+        ```
+
+        ```bash title="Filter by volume"
+        openstack volume backup list --volume <volume-id>
+        ```
+
+        ```bash title="Show backup details"
+        openstack volume backup show <backup-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Restore a Backup">
+        <CodeGroup>
+        ```bash title="Restore to an existing volume"
+        openstack volume backup restore <backup-id> <target-volume-id>
+        ```
+
+        ```bash title="Restore to a new volume"
+        openstack volume backup restore --name restored-vol-2026-03-17 <backup-id>
+        ```
+        </CodeGroup>
+
+        Monitor restore progress:
+
+        <CodeGroup>
+        ```bash title="Watch restore status"
+        openstack volume show <target-volume-id> -c status -c migration_status
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Backup Driver Configuration
+
+    Edit `/etc/cinder/cinder.conf` on the backup node:
+
+    <Tabs>
+      <Tab title="Swift / S3 (Default)">
+        <CodeGroup>
+        ```ini title="/etc/cinder/cinder.conf"
+        [DEFAULT]
+        backup_driver = cinder.backup.drivers.swift.SwiftBackupDriver
+        backup_swift_url = http://<swift-endpoint>/v1
+        backup_swift_container = cinder_backups
+        backup_swift_block_size = 32768
+        backup_compression_algorithm = zstd
+        backup_file_size = 1999994880
+        backup_max_operations = 15
+        ```
+        </CodeGroup>
+
+        <Note>
+          The Swift backend is S3-compatible when configured with the S3 middleware. Any S3-compliant object store (AWS S3, MinIO, Ceph RGW) can serve as the backup target using this driver.
+        </Note>
+      </Tab>
+      <Tab title="NFS">
+        <CodeGroup>
+        ```ini title="/etc/cinder/cinder.conf"
+        [DEFAULT]
+        backup_driver = cinder.backup.drivers.nfs.NFSBackupDriver
+        backup_share = <nfs-host>:<export-path>
+        backup_compression_algorithm = zstd
+        backup_max_operations = 15
+        ```
+        </CodeGroup>
+      </Tab>
+      <Tab title="CIFS">
+        <CodeGroup>
+        ```ini title="/etc/cinder/cinder.conf"
+        [DEFAULT]
+        backup_driver = cinder.backup.drivers.nfs.NFSBackupDriver
+        backup_share = //<cifs-host>/<share-name>
+        backup_mount_options = username=<user>,password=<pass>,domain=<domain>
+        backup_mount_point_base = /var/lib/cinder/backup
+        backup_compression_algorithm = zstd
+        backup_max_operations = 15
+        ```
+        </CodeGroup>
+
+        <Note>
+          CIFS shares are mounted using the NFS backup driver with CIFS-specific mount options. Ensure the `cifs-utils` package is installed on the backup node before configuring a CIFS target.
+        </Note>
+
+        <CodeGroup>
+        ```bash title="Install CIFS utilities on backup node"
+        apt-get install -y cifs-utils    # Debian/Ubuntu
+        yum install -y cifs-utils        # RHEL/CentOS
+        ```
+        </CodeGroup>
+      </Tab>
+    </Tabs>
+
+    | Parameter | Default | Description |
+    |---|---|---|
+    | `backup_swift_block_size` | 32768 bytes | Chunk size for Swift object upload |
+    | `backup_compression_algorithm` | `zlib` | Options: `zlib`, `bz2`, `zstd`, `none`. Use `zstd` for best speed/ratio balance |
+    | `backup_file_size` | ~1.9 GB | Max size per backup object file |
+    | `backup_max_operations` | 15 | Max concurrent backup + restore operations |
+
+    <Warning>
+      15 concurrent restore operations can consume up to **~83 GB of RAM** depending on compression settings. Tune `backup_max_operations` to match available memory on backup nodes.
+    </Warning>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Automatic Protection of Newly Created Instances
+
+All newly created instances and volumes can be automatically enrolled into backup protection using RBD snapshot scheduling at the pool level combined with a cloud-init post-provisioning hook. This ensures every new workload is protected from the moment it is created — without requiring manual backup configuration per instance.
+
+### How It Works
+
+| Layer | Mechanism | Coverage |
+|---|---|---|
+| Storage layer | RBD pool-level snapshot schedule | All volumes in the pool — including newly created ones — are snapshotted automatically |
+| Instance layer | Cloud-init user data hook | Registers instance metadata and triggers an on-demand backup at first boot |
+| Orchestration layer | Nova API notification + cron | A scheduler listens for `instance.create.end` events and creates an immediate backup |
+
+### Pool-Level RBD Snapshot Schedule (Storage Layer)
+
+Applying a snapshot schedule at the pool level rather than per-image means every new volume in the pool is automatically protected from the moment of creation — no per-volume configuration required.
+
+<CodeGroup>
+```bash title="Apply snapshot schedule to entire pool"
+rbd snap schedule add --pool <volumes-pool> 1h
+rbd snap schedule add --pool <volumes-pool> 1d 00:00
+```
+</CodeGroup>
+
+Verify new volumes inherit the schedule immediately:
+
+<CodeGroup>
+```bash title="Confirm schedule applies to all images in pool"
+rbd snap schedule ls --pool <volumes-pool> --recursive
+```
+</CodeGroup>
+
+### Instance Boot-Time Backup via Cloud-Init (Instance Layer)
+
+Include a backup registration script in the default user data template applied to all new instances. This triggers an immediate on-demand backup at first boot:
+
+<CodeGroup>
+```bash title="Default user data template — backup registration"
+#!/bin/bash
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+VOLUME_ID=$(openstack server show $INSTANCE_ID -c volumes_attached -f value | jq -r '.[0].id')
+
+# Create an immediate full backup at first boot
+openstack volume backup create \
+  --name "auto-${INSTANCE_ID}-$(date +%F)" \
+  --force \
+  $VOLUME_ID
+```
+</CodeGroup>
+
+<Tip>
+  Embed this script in your instance launch templates or Xdeploy provisioning playbooks so it applies to every new instance without requiring per-user action.
+</Tip>
+
+### Event-Driven Backup via Nova Notifications (Orchestration Layer)
+
+Configure a notification listener that triggers a backup automatically when `instance.create.end` is received from the Nova message bus:
+
+<CodeGroup>
+```ini title="/etc/nova/nova.conf — enable notifications"
+[DEFAULT]
+notify_on_state_change = vm_and_task_state
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+```
+</CodeGroup>
+
+A listener service subscribes to the `notifications` topic and calls `openstack volume backup create` for each new instance's attached volumes on creation completion.
+
+<Note>
+  The event-driven approach is the most reliable method for automatic protection — it does not depend on user data execution and covers instances launched via API, CLI, dashboard, or automation pipelines equally.
+</Note>
+
+---
+
+## RBD Snapshot Scheduling
+
+For Ceph RBD-backed volumes, the Ceph `rbd-support` manager module provides native, automated snapshot scheduling at the storage layer — independent of the Block Storage API.
+
+<Tabs>
+  <Tab title="Setup">
+    <Steps>
+      <Step title="Enable the rbd-support Module">
+        <CodeGroup>
+        ```bash title="Enable rbd-support in Ceph Manager"
+        ceph mgr module enable rbd_support
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Create a Snapshot Schedule">
+        <CodeGroup>
+        ```bash title="Schedule snapshots every hour for an image"
+        rbd snap schedule add --pool <pool-name> --image <image-name> 1h
+        ```
+
+        ```bash title="Schedule daily snapshots at midnight"
+        rbd snap schedule add --pool <pool-name> --image <image-name> 1d 00:00
+        ```
+
+        ```bash title="Schedule at pool level (applies to all images in pool)"
+        rbd snap schedule add --pool <pool-name> 24h 00:00
+        ```
+        </CodeGroup>
+
+        | Interval Format | Example | Description |
+        |---|---|---|
+        | `m` | `15m` | Every N minutes |
+        | `h` | `1h` | Every N hours |
+        | `d` | `1d` | Every N days |
+        | With start time | `1d 00:00` | Daily at a specific time |
+      </Step>
+
+      <Step title="List Active Schedules">
+        <CodeGroup>
+        ```bash title="List all snapshot schedules"
+        rbd snap schedule ls --pool <pool-name> --recursive
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Check Schedule Status">
+        <CodeGroup>
+        ```bash title="View next scheduled snapshot times"
+        rbd snap schedule status --pool <pool-name>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Remove a Schedule">
+        <CodeGroup>
+        ```bash title="Remove a specific schedule"
+        rbd snap schedule remove --pool <pool-name> --image <image-name> 1h
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Manual RBD Snapshots">
+    <Steps>
+      <Step title="Create a Snapshot">
+        <CodeGroup>
+        ```bash title="Create RBD snapshot"
+        rbd snap create <pool-name>/<image-name>@<snap-name>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="List Snapshots">
+        <CodeGroup>
+        ```bash title="List snapshots for an image"
+        rbd snap ls <pool-name>/<image-name>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Protect a Snapshot (Before Cloning)">
+        <CodeGroup>
+        ```bash title="Protect snapshot from deletion"
+        rbd snap protect <pool-name>/<image-name>@<snap-name>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Clone from a Snapshot">
+        <CodeGroup>
+        ```bash title="Create a clone from a protected snapshot"
+        rbd clone <pool-name>/<image-name>@<snap-name> <pool-name>/<new-image-name>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Rollback to a Snapshot">
+        <CodeGroup>
+        ```bash title="Rollback image to snapshot state"
+        rbd snap rollback <pool-name>/<image-name>@<snap-name>
+        ```
+        </CodeGroup>
+
+        <Warning>
+          Rollback overwrites all data written to the image after the snapshot was taken. This operation is irreversible. Clone from the snapshot instead if the current state must be preserved.
+        </Warning>
+      </Step>
+
+      <Step title="Delete a Snapshot">
+        <CodeGroup>
+        ```bash title="Delete a single snapshot"
+        rbd snap rm <pool-name>/<image-name>@<snap-name>
+        ```
+
+        ```bash title="Delete all snapshots for an image"
+        rbd snap purge <pool-name>/<image-name>
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Backup is Available">
+    <CodeGroup>
+    ```bash title="Check backup status"
+    openstack volume backup show <backup-id> -c status -c size -c is_incremental
+    ```
+    </CodeGroup>
+
+    `status` must be `available`. Any other status indicates an incomplete or failed backup.
+  </Step>
+  <Step title="Verify Backup Integrity (Restore Test)">
+    Periodically restore backups to a temporary volume and verify data integrity:
+
+    <CodeGroup>
+    ```bash title="Restore to temp volume"
+    openstack volume backup restore <backup-id> --name integrity-test-$(date +%F)
+    ```
+    </CodeGroup>
+
+    Attach the restored volume to a test instance and verify application data is intact.
+  </Step>
+  <Step title="Confirm RBD Schedules are Running">
+    <CodeGroup>
+    ```bash title="Check schedule status"
+    rbd snap schedule status --pool <pool-name>
+    ```
+    </CodeGroup>
+
+    Confirm `last_snapshot` timestamps are updating per the configured interval.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Backup Retention Policy">
+    Establish a tiered retention policy:
+
+    | Tier | Frequency | Retention |
+    |---|---|---|
+    | RBD scheduled snapshots | Hourly | 24 hours |
+    | Incremental backups | Daily | 7 days |
+    | Full backups | Weekly | 4 weeks |
+    | Monthly full backups | Monthly | 12 months |
+
+    Automate retention enforcement — never rely on manual deletion of old backups.
+  </Accordion>
+  <Accordion title="Use zstd Compression">
+    Set `backup_compression_algorithm = zstd` for the best balance of compression ratio and CPU efficiency. Avoid `bz2` in high-throughput environments as it is significantly slower.
+  </Accordion>
+  <Accordion title="Never Delete Full Backups with Dependents">
+    Deleting a full backup that has incremental children makes those incrementals unrestorable. Always delete incremental backups oldest-to-newest, then remove the full backup last.
+  </Accordion>
+  <Accordion title="Back Up the Cinder Database">
+    Volume backup records exist only in the Cinder database. If the database is lost without a backup, existing volume backup data in Swift or NFS becomes unaddressable. Include the Cinder database in the cluster backup schedule.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Backup stuck in 'creating' status">
+    **Cause:** `cinder-backup` service is stalled or the backend (Swift/NFS) is unreachable.
+
+    **Resolution:** Check `cinder-backup` logs and verify backend connectivity. Reset the backup state and retry:
+
+    <CodeGroup>
+    ```bash title="Reset backup state"
+    openstack volume backup set --state error <backup-id>
+    openstack volume backup delete <backup-id>
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Incremental backup fails with 'no full backup found'">
+    **Cause:** No full backup exists for the volume, or the parent backup was deleted.
+
+    **Resolution:** Create a full backup first, then retry the incremental:
+
+    <CodeGroup>
+    ```bash title="Create baseline full backup"
+    openstack volume backup create --name baseline-full <volume-id>
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="High memory usage on backup node">
+    **Cause:** Too many concurrent restore operations. Each restore can consume several GB of RAM depending on backup size and compression.
+
+    **Resolution:** Reduce `backup_max_operations` in `cinder.conf` to limit concurrent operations. Restart `cinder-backup` to apply:
+
+    <CodeGroup>
+    ```bash title="Restart backup service"
+    systemctl restart cinder-backup
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

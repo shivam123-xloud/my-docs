@@ -1,0 +1,358 @@
+---
+title: "Compute Scheduling"
+description: "Configure the Xloud Compute scheduler to control how instances are placed across hypervisor hosts using filters, weights, and affinity policies."
+---
+
+## Overview
+
+The Xloud Compute scheduler determines which physical host receives each new instance. It operates in two sequential phases — filtering (eliminating ineligible hosts) and weighting (ranking eligible hosts) — to produce an optimal placement decision for every instance launch.
+
+<CardGroup cols={3}>
+  <Card title="Filter Scheduler" icon="filter">
+    Binary pass/fail evaluation. Hosts that fail any active filter are eliminated from consideration entirely.
+  </Card>
+  <Card title="Weighers" icon="scale-balanced">
+    Numerical scoring of filtered hosts. The highest-scoring host (or a random selection from the top subset) receives the instance.
+  </Card>
+  <Card title="Placement Service" icon="map-pin">
+    Pre-filters candidate hosts using resource inventory data before the main filter pass, reducing scheduler load at scale.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture
+
+```
+Instance Launch Request
+        │
+        ▼
+┌─────────────────────┐
+│  Placement Service  │  ← Pre-filters by resource availability (RAM, CPU, disk, traits)
+└─────────┬───────────┘
+          │ Candidate host list
+          ▼
+┌─────────────────────┐
+│   Filter Scheduler  │  ← Applies enabled filters (binary pass/fail per host)
+└─────────┬───────────┘
+          │ Passing hosts
+          ▼
+┌─────────────────────┐
+│      Weighers       │  ← Scores remaining hosts; selects top candidate
+└─────────┬───────────┘
+          │ Selected host
+          ▼
+     Instance placed
+```
+
+---
+
+## Default Scheduling Criteria
+
+A host must satisfy **all** of the following before it is considered eligible:
+
+| Criteria | Description |
+|---|---|
+| Availability Zone | Host is in the requested availability zone |
+| Service State | `nova-compute` is active and enabled on the host |
+| Resource Capacity | Sufficient vCPU, RAM, and disk available (subject to allocation ratios) |
+| Flavor Extra Specs | Host capabilities match all flavor extra specs |
+| Image Properties | Host supports the image's required architecture, hypervisor type, and VM mode |
+| Server Group Policy | Affinity or anti-affinity rules for the instance's server group are satisfied |
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Info>
+      Scheduler filter and weight configuration is managed via `nova.conf` on the controller node. Availability zones and host aggregates — which directly influence scheduling — can be managed through the Xloud dashboard.
+    </Info>
+
+    **Managing Host Aggregates:**
+
+    <Steps>
+      <Step title="Open Host Aggregates">
+        Navigate to **Admin → Compute → Host Aggregates**.
+      </Step>
+      <Step title="Create an Aggregate">
+        Click **Create Host Aggregate**. Provide a name and optionally an availability zone name.
+      </Step>
+      <Step title="Add Hosts">
+        After creation, select the aggregate and click **Manage Hosts** to assign compute nodes.
+      </Step>
+      <Step title="Set Metadata">
+        Add key-value metadata to the aggregate. These values are matched by aggregate-based filters (e.g., `AggregateInstanceExtraSpecsFilter`) against flavor extra specs.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Configure Active Filters
+
+    Edit `/etc/nova/nova.conf` on the controller/scheduler node:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf — recommended production filters"
+    [filter_scheduler]
+    enabled_filters = ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,AggregateInstanceExtraSpecsFilter,NUMATopologyFilter
+    ```
+    </CodeGroup>
+
+    <Tip>
+      Order filters from cheapest to most expensive. Place `ComputeFilter` first to eliminate down/disabled hosts immediately, and resource-heavy filters like `NUMATopologyFilter` last.
+    </Tip>
+
+    ---
+
+    ### Step 2 — Configure Weighers
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf — weigher configuration"
+    [filter_scheduler]
+    weight_classes = nova.scheduler.weights.all_weighers
+    host_subset_size = 1
+    ```
+    </CodeGroup>
+
+    Set `host_subset_size` > 1 to introduce randomness — the scheduler picks randomly from the top N hosts rather than always selecting the single highest scorer. Useful for spreading load when many hosts score similarly.
+
+    ---
+
+    ### Step 3 — Set Allocation Ratios
+
+    Control resource overcommitment on compute hosts:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf — allocation ratios"
+    [DEFAULT]
+    cpu_allocation_ratio = 4.0
+    ram_allocation_ratio = 1.0
+    disk_allocation_ratio = 1.0
+    ```
+    </CodeGroup>
+
+    | Ratio | Default | Meaning |
+    |---|---|---|
+    | `cpu_allocation_ratio` | 4.0 | 4 vCPUs allocated per physical core |
+    | `ram_allocation_ratio` | 1.0 | No RAM overcommit (1:1) |
+    | `disk_allocation_ratio` | 1.0 | No disk overcommit (1:1) |
+
+    <Warning>
+      RAM overcommitment increases the risk of OOM conditions on compute hosts. Do not increase `ram_allocation_ratio` above 1.0 without careful capacity planning and memory pressure monitoring.
+    </Warning>
+
+    ---
+
+    ### Step 4 — Configure Server Groups (Affinity / Anti-Affinity)
+
+    <CodeGroup>
+    ```bash title="Create anti-affinity server group"
+    openstack server group create --policy anti-affinity production-web-tier
+    ```
+
+    ```bash title="Create affinity server group"
+    openstack server group create --policy affinity cache-cluster
+    ```
+
+    ```bash title="Launch instance into a server group"
+    openstack server create \
+      --hint group=<server-group-id> \
+      --flavor m1.medium \
+      --image ubuntu-24.04-amd64 \
+      --network <network-id> \
+      web-01
+    ```
+    </CodeGroup>
+
+    | Policy | Behavior |
+    |---|---|
+    | `anti-affinity` | Each instance in the group is placed on a **different** host |
+    | `affinity` | All instances in the group are placed on the **same** host |
+    | `soft-anti-affinity` | Prefer different hosts; allow same host if no alternative exists |
+    | `soft-affinity` | Prefer same host; allow different host if required |
+
+    ---
+
+    ### Step 5 — Manage Availability Zones and Aggregates
+
+    <CodeGroup>
+    ```bash title="Create a host aggregate with availability zone"
+    openstack aggregate create --zone production-az-1 prod-aggregate-1
+    ```
+
+    ```bash title="Add a compute host to aggregate"
+    openstack aggregate add host prod-aggregate-1 <compute-hostname>
+    ```
+
+    ```bash title="Set aggregate metadata (for filter matching)"
+    openstack aggregate set --property ssd=true prod-aggregate-1
+    ```
+    </CodeGroup>
+
+    To enforce scheduling to SSD-backed hosts, set the matching flavor extra spec:
+
+    <CodeGroup>
+    ```bash title="Set flavor extra spec"
+    openstack flavor set m1.fast --property aggregate_instance_extra_specs:ssd=true
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Available Filters Reference
+
+### Core Filters (Always Enable)
+
+| Filter | Description |
+|---|---|
+| `ComputeFilter` | Passes only active, enabled compute hosts. Essential — always include. |
+| `ComputeCapabilitiesFilter` | Matches flavor extra specs against host-reported capabilities |
+| `ImagePropertiesFilter` | Enforces image architecture, hypervisor type, and VM mode requirements |
+
+### Affinity Filters
+
+| Filter | Description | Required Hint / Spec |
+|---|---|---|
+| `ServerGroupAffinityFilter` | Places server group members on the same host | Server group with `affinity` policy |
+| `ServerGroupAntiAffinityFilter` | Distributes server group members across hosts | Server group with `anti-affinity` policy |
+| `SameHostFilter` | Schedules with another specific instance | `same_host` scheduler hint |
+| `DifferentHostFilter` | Schedules away from another specific instance | `different_host` scheduler hint |
+
+### Aggregate Filters
+
+| Filter | Description |
+|---|---|
+| `AggregateInstanceExtraSpecsFilter` | Matches flavor extra specs to aggregate metadata |
+| `AggregateImagePropertiesIsolation` | Restricts images with metadata to matching aggregates |
+| `AggregateMultiTenancyIsolation` | Restricts tenants to designated aggregates |
+| `AggregateTypeAffinityFilter` | Matches flavor names to aggregate `instance_type` metadata |
+
+### Resource & Topology Filters
+
+| Filter | Description |
+|---|---|
+| `NUMATopologyFilter` | Enforces NUMA topology requirements from flavor or image |
+| `PciPassthroughFilter` | Ensures required PCI/SR-IOV devices are available |
+| `IoOpsFilter` | Limits hosts by concurrent I/O operations |
+
+---
+
+## Weighers Reference
+
+| Weigher | Default Behavior | Multiplier Effect |
+|---|---|---|
+| `RAMWeigher` | Spreads instances across hosts by free RAM | Negative = stack on fewest hosts |
+| `CPUWeigher` | Spreads by available vCPUs | Negative = stack instances |
+| `DiskWeigher` | Spreads by free disk | — |
+| `IoOpsWeigher` | Prefers hosts with fewer active I/O ops | — |
+| `BuildFailureWeigher` | Deprioritizes recently failed hosts | High positive (default) |
+| `ServerGroupSoftAntiAffinityWeigher` | Avoids hosts already running group members | — |
+| `HypervisorVersionWeigher` | Prefers newer hypervisor versions | Negative = prefer older |
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Scheduler is Running">
+    <CodeGroup>
+    ```bash title="Check scheduler service"
+    openstack compute service list --service nova-scheduler
+    ```
+    </CodeGroup>
+
+    Service must show `State: up` and `Status: enabled`.
+  </Step>
+  <Step title="Test Filter Behavior">
+    Launch instances with specific scheduler hints and verify placement:
+
+    <CodeGroup>
+    ```bash title="Launch with anti-affinity hint"
+    openstack server create \
+      --hint different_host=<existing-instance-id> \
+      --flavor m1.small \
+      --image ubuntu-24.04-amd64 \
+      --network <network-id> \
+      test-placement
+    ```
+    </CodeGroup>
+
+    Confirm the new instance landed on a different host than the referenced instance.
+  </Step>
+  <Step title="Inspect Placement Decisions">
+    <CodeGroup>
+    ```bash title="Show instance host placement"
+    openstack server show <instance-id> -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Filter Ordering for Performance">
+    At scale, expensive filters significantly increase scheduler latency. Place high-elimination, low-cost filters first:
+
+    1. `ComputeFilter` — eliminates down hosts immediately
+    2. `ImagePropertiesFilter` — eliminates architecture mismatches
+    3. `AggregateInstanceExtraSpecsFilter` — eliminates wrong aggregate hosts
+    4. `NUMATopologyFilter` — expensive; run last
+
+    This ordering maximizes early elimination and minimizes the number of hosts evaluated by expensive filters.
+  </Accordion>
+  <Accordion title="Use Anti-Affinity for HA Workloads">
+    Always create server groups with `anti-affinity` policy for clustered or HA workloads (databases, web tiers, message queues). This ensures a single host failure does not take down an entire application tier.
+  </Accordion>
+  <Accordion title="Disable Cells During Maintenance">
+    When taking a cell offline for maintenance, disable scheduling to it via:
+
+    <CodeGroup>
+    ```bash title="Disable cell scheduling"
+    nova-manage cell_v2 update_cell --cell-uuid <uuid> --disable
+    ```
+    </CodeGroup>
+
+    Restart the scheduler or send `SIGHUP` to apply the change without a full restart.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No valid host found">
+    **Cause:** All hosts were eliminated by one or more filters.
+
+    **Resolution:**
+
+    Enable scheduler debug logging temporarily to identify which filter is rejecting all hosts:
+
+    <CodeGroup>
+    ```bash title="Check scheduler logs"
+    journalctl -u nova-scheduler -n 200 | grep -i "filter\|rejected\|no valid"
+    ```
+    </CodeGroup>
+
+    Common causes: insufficient RAM/disk, flavor extra specs with no matching hosts, or all hosts in a different availability zone.
+  </Accordion>
+  <Accordion title="Instances always land on the same host">
+    **Cause:** `RAMWeigher` or `CPUWeigher` multiplier is negative (stacking behavior), or `host_subset_size = 1` with one dominant host.
+
+    **Resolution:** Set a positive multiplier to spread instances, or increase `host_subset_size` to introduce randomness across the top N hosts.
+  </Accordion>
+  <Accordion title="Server group anti-affinity not enforced">
+    **Cause:** `ServerGroupAntiAffinityFilter` is not in `enabled_filters`.
+
+    **Resolution:** Add `ServerGroupAntiAffinityFilter` to the `enabled_filters` list and restart `nova-scheduler`.
+  </Accordion>
+</AccordionGroup>

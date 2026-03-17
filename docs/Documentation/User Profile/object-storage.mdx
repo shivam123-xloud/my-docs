@@ -1,0 +1,93 @@
+---
+title: "Object Storage"
+description: "Create containers, upload objects, and manage files in Xloud object storage from the dashboard."
+---
+
+## Overview
+
+Object storage provides a flat, scalable store for files, backups, media, and static assets. Objects are organized in containers (buckets) and are accessible via the dashboard or CLI. Unlike block volumes, object storage is not mounted to instances — it is accessed over HTTP.
+
+---
+
+## Create Containers and Manage Objects
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Container">
+        Navigate to **Project → Object Store → Containers → + Container**.
+
+        | Field | Description |
+        |---|---|
+        | Container Name | Unique name within your account |
+        | Container Access | **Private** (credentials required) or **Public** (publicly accessible without auth) |
+      </Step>
+      <Step title="Upload Objects">
+        Open the container and click the **Upload** icon.
+
+        Select one or more files from your local machine. Large files are segmented automatically.
+      </Step>
+      <Step title="Create a Folder (Pseudo-Directory)">
+        Click the **+ folder** icon to create a pseudo-directory. Object names prefixed with the folder name are grouped visually — the object store is flat; folders are a naming convention.
+      </Step>
+      <Step title="Download or Delete Objects">
+        Click an object name to download it, or use the delete icon to remove it.
+
+        <Warning>
+          Object deletion is immediate and permanent. There is no recycle bin. Enable container versioning before uploading critical objects if you need rollback capability.
+        </Warning>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create container and upload"
+    openstack container create my-files
+    openstack object create my-files /path/to/file.tar.gz
+    ```
+
+    ```bash title="List objects"
+    openstack object list my-files
+    ```
+
+    ```bash title="Download an object"
+    openstack object save my-files file.tar.gz
+    ```
+
+    ```bash title="Delete an object"
+    openstack object delete my-files file.tar.gz
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Container Exists">
+    <CodeGroup>
+    ```bash title="List containers"
+    openstack container list
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Verify Object Was Uploaded">
+    <CodeGroup>
+    ```bash title="List objects in container"
+    openstack object list my-files
+    ```
+    </CodeGroup>
+
+    The uploaded file must appear in the list with the correct name and size.
+  </Step>
+  <Step title="Test Object Download">
+    <CodeGroup>
+    ```bash title="Download and verify object"
+    openstack object save my-files file.tar.gz
+    ls -lh file.tar.gz
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

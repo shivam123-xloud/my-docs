@@ -1,0 +1,119 @@
+---
+title: "Service Plans Access"
+description: "Enforce read-only access to flavors for all project users while restricting creation, modification, and deletion to administrators."
+---
+
+## Overview
+
+Service plans in Xloud are represented as **flavors** — the vCPU, RAM, disk, and extra spec combinations that define instance sizes. Flavor management is a platform-level administrative function. End users can list and select flavors but cannot create, modify, or delete them.
+
+---
+
+## Flavor (Service Plan) Policies
+
+| Operation | Policy Rule | Minimum Role | Notes |
+|---|---|---|---|
+| List flavors | `os_compute_api:os-flavor-manage:list` | `PROJECT_READER` | All authenticated users can list available flavors |
+| Show flavor detail | `os_compute_api:os-flavor-manage:show` | `PROJECT_READER` | View vCPU, RAM, disk, and extra specs |
+| Create a flavor | `os_compute_api:os-flavor-manage:create` | `ADMIN` | Platform-level — not project-scoped |
+| Update a flavor | `os_compute_api:os-flavor-manage:update` | `ADMIN` | Platform-level |
+| Delete a flavor | `os_compute_api:os-flavor-manage:delete` | `ADMIN` | Platform-level |
+| List flavor extra specs | `os_compute_api:os-flavor-extra-specs:index` | `PROJECT_READER_OR_ADMIN` | View scheduling metadata |
+| Show flavor extra spec | `os_compute_api:os-flavor-extra-specs:show` | `PROJECT_READER_OR_ADMIN` | View individual spec |
+| Create flavor extra spec | `os_compute_api:os-flavor-extra-specs:create` | `ADMIN` | Admin only |
+| Update flavor extra spec | `os_compute_api:os-flavor-extra-specs:update` | `ADMIN` | Admin only |
+| Delete flavor extra spec | `os_compute_api:os-flavor-extra-specs:delete` | `ADMIN` | Admin only |
+
+---
+
+## Read vs Full Access
+
+This two-tier model enforces the separation between service plan consumption (all users) and service plan definition (admins only):
+
+| Access Level | Role | Can Do |
+|---|---|---|
+| **Read access** | `reader`, `member`, `manager` | List all public flavors, view specs, select at launch |
+| **Full access** | `admin` | Create, update, delete flavors and extra specs |
+
+<Info>
+  Flavors can be marked **private** to restrict availability to specific projects. Private flavor access is controlled by flavor access policies, allowing administrators to offer specialized service plans (GPU flavors, high-memory tiers) to select projects only.
+</Info>
+
+---
+
+## Managing Private Flavor Access
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Private Flavor">
+        Navigate to **Admin → Compute → Flavors → Create Flavor**.
+
+        In the **Create Flavor** dialog, uncheck **Public** to make the flavor private. Private flavors are invisible to projects until explicitly granted access.
+      </Step>
+      <Step title="Grant Project Access">
+        Open the private flavor and navigate to the **Flavor Access** tab.
+
+        Click **Add** and enter the project ID. Repeat for each project that should have access to this service plan.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create a private flavor (admin)"
+    openstack flavor create \
+      --vcpus 32 \
+      --ram 262144 \
+      --disk 500 \
+      --private \
+      gpu.xlarge
+    ```
+
+    ```bash title="Grant a project access to the private flavor"
+    openstack flavor set --project <project-id> gpu.xlarge
+    ```
+
+    ```bash title="List projects with access to a private flavor"
+    openstack flavor access list gpu.xlarge
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Member Can List Flavors">
+    As a `member`-role user, list available flavors — must succeed:
+
+    <CodeGroup>
+    ```bash title="List flavors (member)"
+    openstack flavor list
+    # Expected: list of all public flavors returned
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Non-Admin Cannot Create Flavors">
+    As a `member`-role user, attempt to create a flavor — must be rejected:
+
+    <CodeGroup>
+    ```bash title="Test flavor creation restriction"
+    openstack flavor create --vcpus 2 --ram 4096 --disk 40 test-flavor
+    # Expected: 403 Forbidden
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Verify Private Flavor Visibility">
+    As a project user with access, confirm the private flavor is visible:
+
+    <CodeGroup>
+    ```bash title="Confirm private flavor appears for granted project"
+    openstack flavor list --all
+    ```
+    </CodeGroup>
+
+    The private flavor must appear for granted projects and must be absent for all others.
+  </Step>
+</Steps>

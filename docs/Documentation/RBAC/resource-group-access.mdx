@@ -1,0 +1,82 @@
+---
+title: "Resource Group Access"
+description: "Control which roles can view, create, and manage instances, volumes, and other resources within Xloud resource groups."
+---
+
+## Overview
+
+Access to Xloud resource groups — projects, instances, volumes, networks — is controlled through role assignments. Roles define the permission boundary a user operates within; they do not grant access to individual objects but to categories of operations on all resources within the project scope.
+
+---
+
+## Instance (Server) Access Policies
+
+| Operation | Policy Rule | Minimum Role |
+|---|---|---|
+| List own instances | `os_compute_api:servers:index` | `PROJECT_READER` |
+| List all project instances | `os_compute_api:servers:detail` | `PROJECT_READER` |
+| Create an instance | `os_compute_api:servers:create` | `PROJECT_MEMBER` |
+| Delete an instance | `os_compute_api:servers:delete` | `PROJECT_MEMBER` |
+| Reboot an instance | `os_compute_api:servers:reboot` | `PROJECT_MEMBER_OR_ADMIN` |
+| Start / Stop an instance | `os_compute_api:servers:stop` / `start` | `PROJECT_MEMBER_OR_ADMIN` |
+| Rebuild an instance | `os_compute_api:servers:rebuild` | `PROJECT_MEMBER_OR_ADMIN` |
+| Resize an instance | `os_compute_api:servers:resize` | `PROJECT_MEMBER_OR_ADMIN` |
+| Migrate (no host spec) | `os_compute_api:servers:migrate` | `PROJECT_MANAGER_OR_ADMIN` |
+| Migrate (with host spec) | `os_compute_api:servers:migrate` | `ADMIN` |
+| Pause / Unpause | `os_compute_api:os-pause-server:pause` | `PROJECT_MEMBER_OR_ADMIN` |
+| List all instances (all projects) | `os_compute_api:servers:index:get_all_tenants` | `ADMIN` |
+
+<Tip>
+  Assign the `reader` role to monitoring accounts, auditors, and support engineers who need visibility into resource state but must not modify anything. Assign `member` to developers and operators who own their workloads.
+</Tip>
+
+---
+
+## Volume Attachment Policies
+
+| Operation | Policy Rule | Minimum Role |
+|---|---|---|
+| List volume attachments | `os_compute_api:os-volumes-attachments:index` | `PROJECT_READER_OR_ADMIN` |
+| Attach a volume | `os_compute_api:os-volumes-attachments:create` | `PROJECT_MEMBER_OR_ADMIN` |
+| Update an attachment | `os_compute_api:os-volumes-attachments:update` | `PROJECT_MEMBER_OR_ADMIN` |
+| Detach a volume | `os_compute_api:os-volumes-attachments:delete` | `PROJECT_MEMBER_OR_ADMIN` |
+| Swap volume attachment | `os_compute_api:os-volumes-attachments:swap` | `SERVICE_OR_ADMIN` |
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Test Read-Only Enforcement">
+    Authenticate as a `reader`-role user and attempt a write operation — it must be rejected:
+
+    <CodeGroup>
+    ```bash title="Confirm reader can list but not delete"
+    openstack server list          # Should succeed
+    openstack server delete <id>   # Should return 403 Forbidden
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Member Can Create Instances">
+    Authenticate as a `member`-role user and launch an instance:
+
+    <CodeGroup>
+    ```bash title="Launch instance as member"
+    openstack server create \
+      --flavor m1.small \
+      --image ubuntu-24.04-amd64 \
+      --network <network-id> \
+      rbac-test-instance
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Verify Volume Attachment Permissions">
+    As a `member`-role user, attach a volume to a project instance:
+
+    <CodeGroup>
+    ```bash title="Attach volume (member)"
+    openstack server add volume rbac-test-instance <volume-id>
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

@@ -1,0 +1,175 @@
+---
+title: "Instance Management"
+description: "Launch, connect to, and manage the full lifecycle of virtual machine instances from the Xloud dashboard."
+---
+
+## Launching an Instance
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Open the Launch Dialog">
+        Navigate to **Project → Compute → Instances → Launch Instance**.
+      </Step>
+      <Step title="Details Tab">
+        | Field | Description |
+        |---|---|
+        | Instance Name | Name for the new instance |
+        | Description | Optional |
+        | Availability Zone | Select the failure domain (or leave as `Any`) |
+        | Count | Number of identical instances to launch |
+      </Step>
+      <Step title="Source Tab">
+        | Field | Description |
+        |---|---|
+        | Select Boot Source | Image, Instance Snapshot, Volume, or Volume Snapshot |
+        | Create New Volume | Optionally create a Cinder root volume from the image for persistent root disk |
+        | Delete Volume on Instance Delete | Uncheck to retain the root volume after instance deletion |
+
+        Select the image or volume to boot from.
+      </Step>
+      <Step title="Flavor Tab">
+        Select an instance size. The flavor summary shows vCPUs, RAM, and disk allocation. Flavors that exceed your project quota are shown but cannot be selected.
+      </Step>
+      <Step title="Networks Tab">
+        Select one or more networks to attach. At least one network is required. Add multiple networks to attach multiple virtual NICs.
+      </Step>
+      <Step title="Security Groups Tab">
+        Attach one or more security groups. The `default` group is pre-selected — add your custom security group (e.g., `web-servers`) here.
+      </Step>
+      <Step title="Key Pair Tab">
+        Select the key pair to inject into the instance for SSH access. Without a key pair, SSH access will not be available unless the image supports password authentication.
+      </Step>
+      <Step title="Configuration Tab (Optional)">
+        | Field | Description |
+        |---|---|
+        | User Data | Cloud-init script to run on first boot (bash or cloud-config format) |
+        | Disk Partition | `Automatic` or `Manual` |
+      </Step>
+      <Step title="Launch">
+        Click **Launch Instance**. The instance transitions through `BUILD` → `ACTIVE`. Monitor status in the Instances list.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Launch a basic instance"
+    openstack server create \
+      --flavor m1.medium \
+      --image ubuntu-24.04-amd64 \
+      --key-name my-keypair \
+      --security-group web-servers \
+      --network <network-id> \
+      my-instance
+    ```
+
+    ```bash title="Launch with user data script"
+    openstack server create \
+      --flavor m1.medium \
+      --image ubuntu-24.04-amd64 \
+      --key-name my-keypair \
+      --security-group web-servers \
+      --network <network-id> \
+      --user-data /path/to/cloud-init.sh \
+      my-instance
+    ```
+
+    ```bash title="Launch and boot from a new Cinder volume"
+    openstack server create \
+      --flavor m1.medium \
+      --image ubuntu-24.04-amd64 \
+      --boot-from-volume 50 \
+      --key-name my-keypair \
+      --security-group web-servers \
+      --network <network-id> \
+      my-instance
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Connecting to an Instance
+
+<Steps>
+  <Step title="Assign a Floating IP">
+    To access an instance from outside the Xloud network, allocate and associate a floating IP:
+
+    <Tabs>
+      <Tab title="GUI">
+        Go to **Project → Network → Floating IPs → Allocate IP to Project**.
+
+        Select the external network pool and click **Allocate IP**. Then click **Associate** to bind it to an instance.
+      </Tab>
+      <Tab title="CLI">
+        <CodeGroup>
+        ```bash title="Allocate and associate floating IP"
+        openstack floating ip create <external-network>
+        openstack server add floating ip my-instance <floating-ip>
+        ```
+        </CodeGroup>
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Connect via SSH">
+    <CodeGroup>
+    ```bash title="SSH into a Linux instance"
+    ssh -i my-keypair.pem ubuntu@<floating-ip>
+    ```
+    </CodeGroup>
+
+    Replace `ubuntu` with the default user for the image (e.g., `centos`, `rocky`, `ec2-user`).
+  </Step>
+  <Step title="Use the Web Console (No SSH Required)">
+    In the Instances list, open the **Actions** dropdown and select **Console**.
+
+    The in-browser VNC console provides direct access regardless of network or SSH configuration — useful for troubleshooting boot failures or misconfigured SSH.
+  </Step>
+</Steps>
+
+---
+
+## Instance Lifecycle Operations
+
+| Operation | Dashboard Path | Description |
+|---|---|---|
+| **Soft Reboot** | Actions → Soft Reboot | Graceful OS-level restart |
+| **Hard Reboot** | Actions → Hard Reboot | Force restart — equivalent to power cycle |
+| **Shut Off** | Actions → Shut Off Instance | Stops the instance; preserves disk state |
+| **Start** | Actions → Start Instance | Starts a shut-off instance |
+| **Suspend** | Actions → Suspend Instance | Saves memory state to disk; resumes from that point |
+| **Resize** | Actions → Resize Instance | Change flavor (vCPUs/RAM) — requires confirmation |
+| **Create Snapshot** | Actions → Create Snapshot | Captures disk state as a new image |
+| **Delete** | Actions → Delete Instance | Permanently removes instance and ephemeral disk |
+
+---
+
+## Tracking Resource Usage
+
+Navigate to **Project → Compute → Overview** to view a summary of current resource consumption against project quotas:
+
+- Instances, vCPUs, RAM in use vs limit
+- Volume and snapshot usage
+- Usage charts for the selected time period (adjustable date range)
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Instance Reached ACTIVE">
+    <CodeGroup>
+    ```bash title="Check instance status"
+    openstack server show my-instance -c status -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Verify SSH Access">
+    <CodeGroup>
+    ```bash title="Test SSH connectivity"
+    ssh -i my-keypair.pem ubuntu@<floating-ip> "hostname && uptime"
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

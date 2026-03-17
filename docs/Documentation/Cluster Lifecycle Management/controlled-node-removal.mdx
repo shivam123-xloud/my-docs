@@ -1,0 +1,157 @@
+---
+title: "Controlled Node Removal"
+description: "Safely evacuate and remove compute nodes from the active scheduler pool for maintenance, hardware refresh, or permanent decommissioning."
+---
+
+## Overview
+
+Removing a compute node safely requires draining it of running workloads before taking it offline. The three-step sequence — disable, drain, delete — ensures no running instances are affected and no new workloads land on the node during the process.
+
+<Note>
+  Disabling the compute service prevents new instances from being scheduled to the host but does not affect running workloads. They continue uninterrupted until explicitly migrated.
+</Note>
+
+---
+
+## Disable → Drain → Remove
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Disable the Compute Service">
+        Navigate to **Admin → Compute → Compute Services**.
+
+        Find the target host, open **Actions → Disable Service**, and provide a reason (e.g., `scheduled maintenance 2026-03-17`). This prevents new instances from being scheduled to the host while allowing existing ones to continue running.
+      </Step>
+      <Step title="Migrate All Instances Off the Node">
+        Navigate to **Admin → Compute → Instances**. Filter by the target host using the search field.
+
+        For each instance, use **Actions → Live Migrate** to move it to another host. For instances that cannot live migrate (no shared storage), use **Migrate** (cold migration — brief downtime).
+      </Step>
+      <Step title="Confirm the Host is Empty">
+        Return to **Admin → Compute → Hypervisors** and confirm the host shows **Running VMs: 0**.
+      </Step>
+      <Step title="Delete the Compute Service Record">
+        Navigate to **Admin → Compute → Compute Services**, select the drained host, and delete its service record. This removes it from the scheduler's host list permanently.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Disable the Service (Stop New Scheduling)">
+        <CodeGroup>
+        ```bash title="Disable nova-compute on target host"
+        openstack compute service set \
+          --disable \
+          --disable-reason "Scheduled decommission 2026-03-17" \
+          <hostname> nova-compute
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="List Instances on the Host">
+        <CodeGroup>
+        ```bash title="Find all instances on the target host"
+        openstack server list --all-projects \
+          --host <hostname> \
+          -c ID -c Name -c Status -c Project
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Migrate All Instances Off">
+        <CodeGroup>
+        ```bash title="Live migrate each instance"
+        openstack server migrate --live-migration <instance-id>
+        ```
+
+        ```bash title="Cold migrate (if no shared storage)"
+        openstack server migrate <instance-id>
+        openstack server resize confirm <instance-id>
+        ```
+        </CodeGroup>
+
+        For hosts with many instances, script the loop:
+
+        <CodeGroup>
+        ```bash title="Migrate all instances off a host (script)"
+        for id in $(openstack server list --all-projects --host <hostname> -f value -c ID); do
+          echo "Migrating $id..."
+          openstack server migrate --live-migration $id
+        done
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Verify Host is Empty">
+        <CodeGroup>
+        ```bash title="Confirm no instances remain"
+        openstack server list --all-projects --host <hostname>
+        ```
+        </CodeGroup>
+
+        Proceed only when this returns an empty list.
+      </Step>
+
+      <Step title="Delete the Service Record">
+        <CodeGroup>
+        ```bash title="Get service ID"
+        openstack compute service list --host <hostname> --service nova-compute -f value -c ID
+        ```
+
+        ```bash title="Delete the service record"
+        openstack compute service delete <service-id>
+        ```
+        </CodeGroup>
+
+        <Warning>
+          Deleting the service record is irreversible without re-running `nova-compute` on the host. Only delete after confirming the host is fully drained and decommissioned.
+        </Warning>
+      </Step>
+
+      <Step title="Stop nova-compute on the Host">
+        <CodeGroup>
+        ```bash title="On the decommissioned host"
+        systemctl stop nova-compute
+        systemctl disable nova-compute
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Host No Longer Appears in Service List">
+    <CodeGroup>
+    ```bash title="Verify service record is deleted"
+    openstack compute service list --service nova-compute
+    ```
+    </CodeGroup>
+
+    The removed host must not appear in the output.
+  </Step>
+  <Step title="Confirm All Instances Migrated Successfully">
+    <CodeGroup>
+    ```bash title="Check no instances remain on decommissioned host"
+    openstack server list --all-projects --host <hostname>
+    ```
+    </CodeGroup>
+
+    Must return an empty list. If any instances remain, they are orphaned — investigate and resolve before considering the node decommissioned.
+  </Step>
+  <Step title="Verify Remaining Cluster Capacity">
+    <CodeGroup>
+    ```bash title="Updated cluster capacity"
+    openstack hypervisor stats show
+    ```
+    </CodeGroup>
+
+    Confirm the remaining cluster has sufficient capacity for all active workloads after the removal.
+  </Step>
+</Steps>

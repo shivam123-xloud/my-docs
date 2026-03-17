@@ -1,0 +1,241 @@
+---
+title: "Role-Based Access Control"
+description: "Configure and enforce fine-grained access control across Xloud Compute resources using roles, scopes, and policy rules."
+---
+
+## Overview
+
+Xloud implements Role-Based Access Control (RBAC) across all Compute APIs through a policy engine. Every API call is evaluated against a policy rule that specifies which roles and scopes are permitted to perform the operation. Policies are defined in code with sensible defaults and can be selectively overridden in a policy file.
+
+<CardGroup cols={4}>
+  <Card title="Resource Access" icon="users">
+    Control which roles can view, create, and manage grouped resources across projects and domains.
+  </Card>
+  <Card title="Data Protection" icon="shield">
+    Restrict backup and snapshot operations to authorized roles only.
+  </Card>
+  <Card title="Service Plans" icon="list-check">
+    Separate read access from administrative control over flavor and service plan management.
+  </Card>
+  <Card title="Script Execution" icon="terminal">
+    Govern API access to consoles and remote execution endpoints on running instances.
+  </Card>
+</CardGroup>
+
+---
+
+## Role Hierarchy
+
+Xloud Compute recognizes five role levels with defined permission inheritance:
+
+| Role | Scope | Inherits | Description |
+|---|---|---|---|
+| `reader` | Project | — | Read-only access to resources within the project |
+| `member` | Project | `reader` | Standard resource ownership — create, manage, delete within the project |
+| `manager` | Project | `member` | Elevated project operations — server migration without host targeting, cross-member actions |
+| `admin` | Deployment | All | Global write operations across all projects and deployment-level resources |
+| `service` | Internal | — | Reserved for service-to-service communication (nova, neutron internal calls only) |
+
+### Supported Role Combinations
+
+Nova policy rules use the following composites to express permission requirements:
+
+| Rule Alias | Resolves To | Meaning |
+|---|---|---|
+| `PROJECT_READER` | `role:reader and project_id:%(project_id)s` | Project-scoped read access |
+| `PROJECT_MEMBER` | `role:member and project_id:%(project_id)s` | Project-scoped create/manage access |
+| `PROJECT_MANAGER` | `role:manager and project_id:%(project_id)s` | Project-scoped elevated operations |
+| `PROJECT_MEMBER_OR_ADMIN` | member within project **or** admin | Standard resource operations |
+| `PROJECT_READER_OR_ADMIN` | reader within project **or** admin | Read access or admin override |
+| `PROJECT_MANAGER_OR_ADMIN` | manager within project **or** admin | Elevated project ops or admin |
+| `SERVICE_OR_ADMIN` | service account **or** admin | Internal/platform-level operations only |
+
+<Info>
+  All Xloud Compute policies are **project-scoped**. Scope enforcement is configurable via `oslo_policy.enforce_scope = True` in `nova.conf`. Enable scope enforcement together with new role defaults (`oslo_policy.enforce_new_defaults = True`) — enabling them separately can produce unclear authentication failures.
+</Info>
+
+---
+
+## Configuration
+
+### Enabling New RBAC Defaults
+
+<Tabs>
+  <Tab title="GUI">
+    <Info>
+      Policy configuration is managed through configuration files on the controller node. There is no dashboard interface for editing policy rules. Role assignments to users and groups can be managed via **Admin → Identity → Projects → Manage Members**.
+    </Info>
+
+    <Steps>
+      <Step title="Assign Roles to Users">
+        Navigate to **Admin → Identity → Projects → [Select Project] → Manage Members**.
+
+        Assign the appropriate role to each user or group:
+
+        | Role | Assign When |
+        |---|---|
+        | `reader` | User needs visibility only — audit, monitoring, support |
+        | `member` | User manages their own resources within the project |
+        | `manager` | User coordinates across team members, performs migrations |
+        | `admin` | Full platform control required |
+      </Step>
+      <Step title="Assign Roles via Groups">
+        Navigate to **Admin → Identity → Groups**.
+
+        Assign roles to groups rather than individual users. All group members inherit the group's role assignments immediately — no per-user updates required when team membership changes.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Enable New RBAC Defaults
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf"
+    [oslo_policy]
+    enforce_new_defaults = True
+    enforce_scope = True
+    ```
+    </CodeGroup>
+
+    Restart nova services to apply:
+
+    <CodeGroup>
+    ```bash title="Apply policy config changes"
+    systemctl restart nova-api nova-scheduler nova-conductor
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 2 — Assign Roles to Users and Groups
+
+    <CodeGroup>
+    ```bash title="Assign reader role (read-only)"
+    openstack role add \
+      --project <project-name> \
+      --user <username> \
+      reader
+    ```
+
+    ```bash title="Assign member role (standard access)"
+    openstack role add \
+      --project <project-name> \
+      --user <username> \
+      member
+    ```
+
+    ```bash title="Assign manager role (elevated project access)"
+    openstack role add \
+      --project <project-name> \
+      --user <username> \
+      manager
+    ```
+
+    ```bash title="Assign role to a group (all members inherit)"
+    openstack role add \
+      --project <project-name> \
+      --group <group-name> \
+      member
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 3 — Override Policy Rules (Optional)
+
+    Custom policy overrides are defined in `/etc/nova/policy.yaml`. Only specify rules that differ from the defaults — all other policies continue using built-in defaults.
+
+    <CodeGroup>
+    ```yaml title="/etc/nova/policy.yaml — example overrides"
+    # Restrict server creation to manager and above
+    "os_compute_api:servers:create": "rule:PROJECT_MANAGER_OR_ADMIN"
+
+    # Allow readers to list all servers across the project
+    "os_compute_api:servers:index": "rule:PROJECT_READER_OR_ADMIN"
+
+    # Lock flavor creation to admin only
+    "os_compute_api:os-flavor-manage:create": "rule:context_is_admin"
+    ```
+    </CodeGroup>
+
+    <Warning>
+      An empty or missing `/etc/nova/policy.yaml` causes Nova to use all built-in defaults — this is the recommended state. Only add entries when a default must be changed. A misconfigured policy rule can lock all users out of an API endpoint.
+    </Warning>
+
+    Validate policy syntax before reloading:
+
+    <CodeGroup>
+    ```bash title="Check policy file syntax"
+    oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Enable Both Scope and New Defaults Together">
+    Always enable `enforce_scope` and `enforce_new_defaults` simultaneously. Enabling scope enforcement without new defaults — or vice versa — produces ambiguous policy evaluation paths and can generate misleading authentication failures that are difficult to debug.
+  </Accordion>
+  <Accordion title="Use Groups for Role Assignment at Scale">
+    Assign roles to groups, not individual users. When an engineer joins or leaves a team, a single group membership change propagates all role assignments instantly. Per-user role management does not scale and leads to permission drift over time.
+  </Accordion>
+  <Accordion title="Minimize Policy File Overrides">
+    The built-in defaults represent a well-tested, secure baseline. Only add entries to `policy.yaml` when a specific business or compliance requirement cannot be met by the defaults. Every override is a maintenance liability — it must be reviewed with each Xloud upgrade.
+  </Accordion>
+  <Accordion title="Restrict Console Access in Multi-Tenant Environments">
+    Console access provides OS-level shell access. In shared environments, restrict `os-remote-consoles` to `manager` or above. Standard project `member` users should connect via SSH — console access should be reserved for emergency recovery scenarios.
+  </Accordion>
+  <Accordion title="Keep Admin Role Assignments Minimal">
+    The `admin` role grants deployment-wide write access. Audit admin role assignments quarterly. Service accounts should use the `service` role — not `admin` — to limit blast radius if credentials are compromised.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="User receives 403 Forbidden on a permitted operation">
+    **Cause:** The user's token was issued before the role was assigned, so the token does not include the new role.
+
+    **Resolution:** The user must re-authenticate to receive a new token that includes the updated role:
+
+    <CodeGroup>
+    ```bash title="Re-issue token"
+    openstack token issue
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Policy override not taking effect">
+    **Cause:** Nova API service has not reloaded the policy file, or there is a syntax error in `policy.yaml`.
+
+    **Resolution:** Validate syntax and restart the API service:
+
+    <CodeGroup>
+    ```bash title="Validate and reload"
+    oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+    systemctl restart nova-api
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="enforce_scope enabled but getting unexpected 403s">
+    **Cause:** `enforce_new_defaults` was not enabled at the same time as `enforce_scope`. Mixed-mode policy evaluation causes some rules to evaluate against the old admin-or-owner model, producing unexpected denials.
+
+    **Resolution:** Enable both flags together and restart all nova services:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf"
+    [oslo_policy]
+    enforce_scope = True
+    enforce_new_defaults = True
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

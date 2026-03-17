@@ -1,0 +1,358 @@
+---
+title: "Compute API Reference"
+description: "Programmatically manage Xloud Compute resources — instances, volumes, snapshots, and backups — using the versioned REST API with microversion support."
+---
+
+## Overview
+
+The Xloud Compute API provides a RESTful interface for managing all compute resources programmatically. It supports microversioning, allowing new capabilities to be introduced without breaking existing integrations. All data protection operations available in the Dashboard and CLI are accessible through this API.
+
+<CardGroup cols={3}>
+  <Card title="Microversioned" icon="code-branch">
+    Request specific API behaviors by specifying a microversion header. Enables forward-compatible integrations that adopt new features incrementally.
+  </Card>
+  <Card title="Fully Authenticated" icon="lock">
+    All endpoints (except version discovery) require a valid Xloud Identity service token. Tokens are scoped to a project and carry role-based permissions.
+  </Card>
+  <Card title="Request Tracking" icon="magnifying-glass">
+    Every response includes a unique request ID (`X-Openstack-Request-Id`) for end-to-end tracing across Xloud services.
+  </Card>
+</CardGroup>
+
+---
+
+## API Versioning
+
+### Major Versions
+
+| Version | Status | Notes |
+|---|---|---|
+| v2.0 | Deprecated | Do not use for new integrations |
+| v2.1 | Current | All new development targets v2.1 with microversions |
+
+### Microversions
+
+Microversions range from **2.1** to **2.103** (latest). Specify a microversion in the request header:
+
+<CodeGroup>
+```http title="Microversion request header"
+X-OpenStack-Nova-API-Version: 2.87
+```
+</CodeGroup>
+
+If no microversion is specified, the API defaults to **2.1** behavior.
+
+| Microversion | Capability Added |
+|---|---|
+| 2.37 | Network specification required at server creation |
+| 2.47 | Full flavor details embedded in server response |
+| 2.60 | Multi-attach volume support |
+| 2.63 | Trusted image certificate support |
+| 2.74 | Admin-level host/hypervisor targeting at launch |
+| 2.90 | Hostname configuration at server creation |
+| 2.94 | FQDN hostname support |
+
+---
+
+## Authentication
+
+All API calls (except version discovery) require a token from the Xloud Identity service.
+
+<Steps>
+  <Step title="Obtain a Token">
+    <CodeGroup>
+    ```bash title="Request Identity token"
+    curl -s -X POST https://<identity-endpoint>/v3/auth/tokens \
+      -H "Content-Type: application/json" \
+      -d '{
+        "auth": {
+          "identity": {
+            "methods": ["password"],
+            "password": {
+              "user": {
+                "name": "<username>",
+                "domain": {"name": "Default"},
+                "password": "<password>"
+              }
+            }
+          },
+          "scope": {
+            "project": {
+              "name": "<project-name>",
+              "domain": {"name": "Default"}
+            }
+          }
+        }
+      }' -D - | grep -i x-subject-token
+    ```
+    </CodeGroup>
+
+    The token is returned in the `X-Subject-Token` response header.
+  </Step>
+  <Step title="Use the Token in API Calls">
+    <CodeGroup>
+    ```bash title="Pass token in request header"
+    curl -s -H "X-Auth-Token: <token>" \
+         -H "X-OpenStack-Nova-API-Version: 2.87" \
+         https://<compute-endpoint>/v2.1/<project-id>/servers
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Core Endpoints
+
+### Version Discovery
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|---|---|
+| `GET` | `/` | No | List all supported major API versions |
+| `GET` | `/v2.1/` | No | Show v2.1 details and microversion range |
+
+<CodeGroup>
+```bash title="Discover supported versions"
+curl -s https://<compute-endpoint>/ | python3 -m json.tool
+```
+</CodeGroup>
+
+---
+
+### Server (Instance) Operations
+
+| Method | Endpoint | Microversion | Description |
+|---|---|---|---|
+| `GET` | `/v2.1/{project_id}/servers` | — | List servers (summary) |
+| `GET` | `/v2.1/{project_id}/servers/detail` | — | List servers with full detail |
+| `POST` | `/v2.1/{project_id}/servers` | — | Create a server |
+| `GET` | `/v2.1/{project_id}/servers/{server_id}` | — | Show server details |
+| `PUT` | `/v2.1/{project_id}/servers/{server_id}` | — | Update server name or access IPs |
+| `DELETE` | `/v2.1/{project_id}/servers/{server_id}` | — | Delete a server |
+
+#### Create Server
+
+<CodeGroup>
+```json title="POST /v2.1/{project_id}/servers — Minimal request body"
+{
+  "server": {
+    "name": "prod-web-01",
+    "flavorRef": "<flavor-id>",
+    "imageRef": "<image-id>",
+    "networks": [{"uuid": "<network-id>"}],
+    "key_name": "<keypair-name>",
+    "availability_zone": "production-az-1"
+  }
+}
+```
+
+```json title="POST — Boot from volume (microversion 2.37+)"
+{
+  "server": {
+    "name": "prod-db-01",
+    "flavorRef": "<flavor-id>",
+    "networks": [{"uuid": "<network-id>"}],
+    "block_device_mapping_v2": [
+      {
+        "boot_index": 0,
+        "uuid": "<volume-id>",
+        "source_type": "volume",
+        "destination_type": "volume",
+        "delete_on_termination": false
+      }
+    ]
+  }
+}
+```
+
+```json title="POST — With scheduler hints (anti-affinity)"
+{
+  "server": {
+    "name": "prod-web-02",
+    "flavorRef": "<flavor-id>",
+    "imageRef": "<image-id>",
+    "networks": [{"uuid": "<network-id>"}]
+  },
+  "os:scheduler_hints": {
+    "group": "<server-group-id>"
+  }
+}
+```
+</CodeGroup>
+
+#### Server Filtering
+
+The `GET /servers` and `GET /servers/detail` endpoints support query parameters for filtering:
+
+| Filter | Example | Description |
+|---|---|---|
+| `status` | `?status=ACTIVE` | Filter by server status |
+| `flavor` | `?flavor=<flavor-id>` | Filter by flavor |
+| `image` | `?image=<image-id>` | Filter by image |
+| `name` | `?name=prod-web` | Filter by name (regex) |
+| `host` | `?host=<hostname>` | Admin only — filter by compute host |
+| `changes-since` | `?changes-since=2026-01-01T00:00:00Z` | Servers modified after timestamp |
+| `tags` | `?tags=env:prod,tier:web` | Filter by tags (microversion 2.26+) |
+
+---
+
+### Server Action Operations
+
+Trigger actions on an existing server via `POST /v2.1/{project_id}/servers/{server_id}/action`:
+
+<CodeGroup>
+```json title="Create Instance Snapshot"
+{
+  "createImage": {
+    "name": "prod-web-01-snapshot-2026-03-17",
+    "metadata": {
+      "env": "production",
+      "created_by": "automated-backup"
+    }
+  }
+}
+```
+
+```json title="Hard Reboot"
+{
+  "reboot": {
+    "type": "HARD"
+  }
+}
+```
+
+```json title="Live Migrate"
+{
+  "os-migrateLive": {
+    "host": null,
+    "block_migration": "auto",
+    "disk_over_commit": false
+  }
+}
+```
+
+```json title="Evacuate"
+{
+  "evacuate": {
+    "host": "<target-host>",
+    "onSharedStorage": false
+  }
+}
+```
+</CodeGroup>
+
+---
+
+### Volume Attachment Operations
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/v2.1/{project_id}/servers/{server_id}/os-volume_attachments` | List attached volumes |
+| `POST` | `/v2.1/{project_id}/servers/{server_id}/os-volume_attachments` | Attach a volume |
+| `GET` | `/v2.1/{project_id}/servers/{server_id}/os-volume_attachments/{attachment_id}` | Show attachment detail |
+| `DELETE` | `/v2.1/{project_id}/servers/{server_id}/os-volume_attachments/{attachment_id}` | Detach a volume |
+
+<CodeGroup>
+```json title="POST — Attach volume request body"
+{
+  "volumeAttachment": {
+    "volumeId": "<volume-id>",
+    "device": "/dev/vdb"
+  }
+}
+```
+</CodeGroup>
+
+---
+
+### Server Metadata & Tags
+
+<CodeGroup>
+```bash title="Set server tags (microversion 2.26+)"
+curl -X PUT \
+  -H "X-Auth-Token: <token>" \
+  -H "X-OpenStack-Nova-API-Version: 2.26" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["env:prod", "tier:web", "backup:daily"]}' \
+  https://<compute-endpoint>/v2.1/<project-id>/servers/<server-id>/tags
+```
+</CodeGroup>
+
+| Constraint | Limit |
+|---|---|
+| Tags per server | 50 |
+| Characters per tag | 60 |
+| Tag restrictions | No forward slashes (`/`) or commas (`,`) |
+| Metadata key-value size | 255 bytes each |
+
+---
+
+## Request Tracking
+
+Every Xloud Compute API response includes a request ID header for cross-service tracing:
+
+| Header | Description |
+|---|---|
+| `X-Openstack-Request-Id` | Unique request ID (format: `req-<uuid4>`) |
+| `X-Compute-Request-Id` | Legacy header — same value, kept for backward compatibility |
+
+Include the request ID when opening support cases or searching logs:
+
+<CodeGroup>
+```bash title="Extract request ID from response"
+curl -si -H "X-Auth-Token: <token>" \
+  https://<compute-endpoint>/v2.1/<project-id>/servers \
+  | grep -i x-openstack-request-id
+```
+</CodeGroup>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify API Endpoint Reachability">
+    <CodeGroup>
+    ```bash title="Check version endpoint"
+    curl -s https://<compute-endpoint>/v2.1/ | python3 -m json.tool
+    ```
+    </CodeGroup>
+
+    Response must include `status: CURRENT` and a valid microversion range.
+  </Step>
+  <Step title="Test Authenticated Request">
+    <CodeGroup>
+    ```bash title="List servers with auth token"
+    curl -s \
+      -H "X-Auth-Token: <token>" \
+      -H "X-OpenStack-Nova-API-Version: 2.87" \
+      https://<compute-endpoint>/v2.1/<project-id>/servers \
+      | python3 -m json.tool
+    ```
+    </CodeGroup>
+
+    A `200 OK` response with a `servers` array confirms authenticated API access is working.
+  </Step>
+  <Step title="Confirm Microversion Support">
+    Request a microversion beyond the supported range and confirm the API returns a `406 Not Acceptable` response — confirming microversion negotiation is active.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Specify a Microversion">
+    Defaulting to microversion 2.1 limits available functionality. Pin integrations to the highest microversion your environment supports, and test against the target microversion during development.
+  </Accordion>
+  <Accordion title="Use Request IDs for Debugging">
+    Log the `X-Openstack-Request-Id` header from every API call in automation and monitoring systems. This ID correlates requests across Nova, Neutron, Cinder, and Glance logs for precise incident investigation.
+  </Accordion>
+  <Accordion title="Scope Tokens Correctly">
+    Use project-scoped tokens for resource operations and domain/system-scoped tokens for admin operations. Overly broad token scopes increase the blast radius of compromised credentials.
+  </Accordion>
+  <Accordion title="Handle 429 Rate Limiting Gracefully">
+    The Compute API enforces rate limits. Implement exponential backoff with jitter in automation that makes rapid successive API calls (e.g., bulk instance creation, polling loops).
+  </Accordion>
+</AccordionGroup>

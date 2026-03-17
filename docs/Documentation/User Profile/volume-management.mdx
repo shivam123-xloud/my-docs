@@ -1,0 +1,111 @@
+---
+title: "Volume Management"
+description: "Create, attach, snapshot, and back up block storage volumes from the Xloud dashboard."
+---
+
+## Overview
+
+Volumes are persistent block storage devices that can be attached to instances, snapshotted, backed up, and moved between instances. Unlike ephemeral instance disk, volume data survives instance deletion.
+
+---
+
+## Create, Attach, and Manage Volumes
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Volume">
+        Navigate to **Project → Volumes → Volumes → Create Volume**.
+
+        | Field | Description |
+        |---|---|
+        | Volume Name | Descriptive name |
+        | Description | Optional |
+        | Volume Source | Empty, Image, Snapshot, or another Volume |
+        | Type | Select the storage tier (set by administrator) |
+        | Size (GB) | Requested size — must be within project quota |
+        | Availability Zone | Match the AZ of the instance you plan to attach it to |
+      </Step>
+      <Step title="Attach to an Instance">
+        In the Volumes list, open **Actions → Manage Attachments**.
+
+        Select the target instance from the dropdown and optionally specify a device path (leave blank for auto-assignment). Click **Attach Volume**.
+      </Step>
+      <Step title="Create a Volume Snapshot">
+        In **Actions** for the target volume, select **Create Snapshot**.
+
+        Provide a name. The snapshot captures the volume's current state as a point-in-time copy.
+      </Step>
+      <Step title="Create a Volume Backup">
+        In **Actions**, select **Create Backup**.
+
+        | Field | Description |
+        |---|---|
+        | Name | Backup identifier |
+        | Container | Optional Swift container name |
+        | Incremental | Back up only changes since last backup |
+        | Force | Allow backup while volume is attached |
+      </Step>
+      <Step title="Detach a Volume">
+        Go to **Actions → Manage Attachments → Detach Volume**.
+
+        <Warning>
+          Always unmount the volume from inside the instance before detaching via the dashboard. Detaching a mounted volume may cause filesystem errors.
+        </Warning>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create a volume"
+    openstack volume create --size 50 my-data-volume
+    ```
+
+    ```bash title="Attach to an instance"
+    openstack server add volume my-instance my-data-volume
+    ```
+
+    ```bash title="Create a snapshot"
+    openstack volume snapshot create --volume my-data-volume my-snapshot
+    ```
+
+    ```bash title="Detach from instance"
+    openstack server remove volume my-instance my-data-volume
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Volume is Visible Inside Instance">
+    After attaching a volume, confirm it appears as a block device inside the instance:
+
+    <CodeGroup>
+    ```bash title="Check block devices"
+    lsblk
+    ```
+    </CodeGroup>
+
+    The attached volume appears (e.g., `/dev/vdb`). Format and mount it before use:
+
+    <CodeGroup>
+    ```bash title="Format and mount new volume"
+    mkfs.ext4 /dev/vdb
+    mount /dev/vdb /mnt/data
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Snapshot Created">
+    <CodeGroup>
+    ```bash title="List volume snapshots"
+    openstack volume snapshot list
+    ```
+    </CodeGroup>
+
+    The snapshot must show `Status: available`.
+  </Step>
+</Steps>

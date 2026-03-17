@@ -1,0 +1,485 @@
+---
+title: "Hypervisor Configuration"
+description: "Configure and optimize the hypervisor on Xloud Compute nodes, including storage backends, nested virtualization, and platform-specific requirements."
+---
+
+## Overview
+
+Xloud Compute uses a software hypervisor layer to provide isolated virtual machine environments on physical hosts. The hypervisor driver interfaces directly with the host kernel's virtualization extensions, enabling full hardware-accelerated virtualization for guest instances.
+
+This document covers hypervisor driver configuration, supported storage backends, platform-specific enablement, and performance tuning for Xloud Compute nodes.
+
+<CardGroup cols={3}>
+  <Card title="Hardware Accelerated" icon="microchip">
+    Full CPU virtualization via hardware extensions on x86, POWER, and AArch64 platforms.
+  </Card>
+  <Card title="Multiple Storage Backends" icon="database">
+    Supports QCOW2, raw, LVM, and Ceph RBD as instance disk backends.
+  </Card>
+  <Card title="Nested Virtualization" icon="layer-group">
+    Run virtual machines inside virtual machines for development and testing environments.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture
+
+The Xloud Compute hypervisor stack consists of three layers:
+
+| Layer | Component | Role |
+|---|---|---|
+| Compute Driver | `libvirt.LibvirtDriver` | Translates Xloud API calls into hypervisor operations |
+| Virtualization Library | libvirt | Manages VM lifecycle, device attachment, and resource allocation |
+| Kernel Module | `kvm_intel` / `kvm_amd` / `kvm_hv` | Exposes hardware virtualization extensions to guest VMs |
+
+### Supported VM Image Formats
+
+| Format | Description | Use Case |
+|---|---|---|
+| `qcow2` | Copy-on-write, supports snapshots | Default; recommended for most workloads |
+| `raw` | Flat binary image | Highest I/O performance |
+| `vmdk` | VMware virtual disk | Migration from VMware environments |
+| `qed` | QEMU Enhanced Disk | Legacy support |
+
+---
+
+## Prerequisites
+
+### Host Hardware Requirements
+
+<Warning>
+Hardware virtualization extensions must be enabled in the system BIOS before the hypervisor can operate. Instances will fail to launch if these extensions are absent or disabled.
+</Warning>
+
+**x86 (Intel / AMD):**
+- Intel VT-x (`vmx`) or AMD-V (`svm`) extension present and enabled in BIOS
+- Kernel modules `kvm_intel` or `kvm_amd` loaded
+
+**POWER (PowerNV):**
+- KVM on PowerNV platform
+- Kernel module `kvm_hv` loaded
+
+**AArch64:**
+- Hardware virtualization extensions enabled
+- Platform-specific kernel module loaded
+
+Verify CPU virtualization support:
+
+<CodeGroup>
+```bash title="x86 — Check CPU extensions"
+grep -E 'vmx|svm' /proc/cpuinfo
+```
+</CodeGroup>
+
+A non-empty output confirms the required extensions are present.
+
+### Supported Operating Systems
+
+The following platforms are validated for Xloud Compute and Ceph storage nodes:
+
+| Platform | Compute Support | Storage (Ceph) Support | Notes |
+|---|---|---|---|
+| CentOS 9 | Supported | Level A | Recommended for production |
+| Ubuntu 22.04 LTS | Supported | Level A | Recommended for production |
+| Ubuntu 20.04 LTS | Supported | Level A | Extended maintenance track |
+| Debian 12 | Supported | Level C (packages only) | Not recommended for production storage |
+
+<Info>
+For Ceph-backed storage nodes, deploy on **CentOS 9** or **Ubuntu 22.04 LTS** for the highest support level and most comprehensive test coverage.
+</Info>
+
+### Kernel Version Requirements
+
+| Use Case | Minimum Kernel | Recommended |
+|---|---|---|
+| RBD block device mapping | 4.19 LTS | 5.3+ or CentOS 8.2+ |
+| CephFS mounting | 4.19 LTS | Latest LTS series |
+| Full RBD image feature support | 5.3 | Latest stable |
+
+<Warning>
+Kernels older than 4.19 lack support for CRUSH tunables and several RBD image features. Production deployments must meet the minimum kernel requirement.
+</Warning>
+
+### Software Prerequisites
+
+- `libvirt` installed and the `libvirtd` daemon running
+- `nova-compute` service installed
+- For network performance: `vhost_net` kernel module available
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Info>
+      Hypervisor driver configuration is a node-level operation performed during Xloud Compute node provisioning via **Xdeploy**. It is not configurable through the Xloud dashboard post-deployment.
+    </Info>
+
+    To review hypervisor status for a compute node via the Xloud dashboard:
+
+    <Steps>
+      <Step title="Navigate to Compute Nodes">
+        In the Xloud dashboard, go to **Admin → Compute → Hypervisors**.
+      </Step>
+      <Step title="Select a Hypervisor">
+        Click on a hypervisor hostname to open its detail view.
+      </Step>
+      <Step title="Review Hypervisor Details">
+        Confirm the following fields:
+        - **Type**: `QEMU`
+        - **Virtualization type**: `hardware`
+        - **Status**: `enabled`
+        - **State**: `up`
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Configure the Compute Driver
+
+    Edit `/etc/nova/nova.conf` on each compute node:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf"
+    [DEFAULT]
+    compute_driver = libvirt.LibvirtDriver
+
+    [libvirt]
+    virt_type = kvm
+    ```
+    </CodeGroup>
+
+    <Tip>
+      `virt_type = kvm` enables full hardware-accelerated virtualization. For environments without hardware extensions, set `virt_type = qemu` — but this is not recommended for production.
+    </Tip>
+
+    ---
+
+    ### Step 2 — Load Kernel Modules
+
+    <Tabs>
+      <Tab title="Intel">
+        <CodeGroup>
+        ```bash title="Load Intel virtualization module"
+        modprobe kvm_intel
+        ```
+        </CodeGroup>
+      </Tab>
+      <Tab title="AMD">
+        <CodeGroup>
+        ```bash title="Load AMD virtualization module"
+        modprobe kvm_amd
+        ```
+        </CodeGroup>
+      </Tab>
+      <Tab title="POWER">
+        <CodeGroup>
+        ```bash title="Load POWER virtualization module"
+        modprobe kvm_hv
+        ```
+        </CodeGroup>
+      </Tab>
+    </Tabs>
+
+    To persist modules across reboots, add the module name to `/etc/modules-load.d/kvm.conf`.
+
+    ---
+
+    ### Step 3 — Configure Storage Backend
+
+    Set the instance disk backend in `/etc/nova/nova.conf`:
+
+    <CodeGroup>
+    ```ini title="QCOW2 (default)"
+    [libvirt]
+    images_type = qcow2
+    ```
+
+    ```ini title="Raw (high performance)"
+    [libvirt]
+    images_type = flat
+    ```
+
+    ```ini title="LVM"
+    [libvirt]
+    images_type = lvm
+    images_volume_group = nova-vol
+    ```
+
+    ```ini title="Ceph RBD"
+    [libvirt]
+    images_type = rbd
+    images_rbd_pool = vms
+    images_rbd_ceph_conf = /etc/ceph/ceph.conf
+    rbd_user = cinder
+    rbd_secret_uuid = <libvirt-secret-uuid>
+    ```
+    </CodeGroup>
+
+    <Note>
+      When using Ceph RBD as the image backend and Xloud Image service (Glance) is also Ceph-backed, Xloud Compute can clone images directly via RBD without downloading them first. This significantly reduces instance boot times for large images.
+    </Note>
+
+    ---
+
+    ### Step 4 — Enable Network Performance Module (Optional)
+
+    <CodeGroup>
+    ```bash title="Load vhost_net module"
+    modprobe vhost_net
+    ```
+    </CodeGroup>
+
+    This enables kernel-space virtio network processing, reducing CPU overhead on the host for network-intensive workloads.
+
+    ---
+
+    ### Step 5 — Configure Nested Virtualization (Optional)
+
+    <Accordion title="Nested Virtualization Setup">
+      Nested virtualization allows virtual machines to run a hypervisor internally. This is intended for development, CI, and testing environments — not for production workloads.
+
+      **Enable the kernel parameter:**
+
+      <CodeGroup>
+      ```bash title="Intel"
+      modprobe -r kvm_intel && modprobe kvm_intel nested=1
+      ```
+
+      ```bash title="AMD"
+      modprobe -r kvm_amd && modprobe kvm_amd nested=1
+      ```
+      </CodeGroup>
+
+      **Persist the parameter:**
+
+      <CodeGroup>
+      ```bash title="/etc/modprobe.d/kvm.conf (Intel)"
+      options kvm_intel nested=1
+      ```
+
+      ```bash title="/etc/modprobe.d/kvm.conf (AMD)"
+      options kvm_amd nested=1
+      ```
+      </CodeGroup>
+
+      **Set CPU mode in nova.conf:**
+
+      <CodeGroup>
+      ```ini title="/etc/nova/nova.conf"
+      [libvirt]
+      cpu_mode = host-passthrough
+      ```
+      </CodeGroup>
+
+      | CPU Mode | Description | Use Case |
+      |---|---|---|
+      | `host-passthrough` | Exposes host CPU exactly as-is | Maximum nested capability |
+      | `host-model` | Closest standard CPU model to host | Balanced compatibility |
+      | `custom` | Manually defined CPU model | Controlled feature exposure |
+
+      <Warning>
+        `host-passthrough` mode ties guest CPU to the exact host CPU model. Live migration is only possible between hosts with identical CPUs.
+      </Warning>
+    </Accordion>
+
+    ---
+
+    ### Step 6 — Restart Compute Service
+
+    <CodeGroup>
+    ```bash title="Apply configuration changes"
+    systemctl restart nova-compute
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+After configuration, verify the hypervisor is active and correctly registered with Xloud Compute.
+
+<Steps>
+  <Step title="Verify Kernel Modules">
+    Confirm the virtualization module is loaded:
+
+    <CodeGroup>
+    ```bash title="Check loaded modules"
+    lsmod | grep kvm
+    ```
+    </CodeGroup>
+
+    Expected output includes `kvm_intel` or `kvm_amd` (or `kvm_hv` on POWER) alongside the base `kvm` module.
+  </Step>
+
+  <Step title="Check Hypervisor List">
+    List all registered compute hypervisors:
+
+    <CodeGroup>
+    ```bash title="List hypervisors"
+    openstack hypervisor list
+    ```
+    </CodeGroup>
+
+    The compute node should appear with **State: up** and **Status: enabled**.
+  </Step>
+
+  <Step title="Verify Hypervisor Details">
+    Inspect a specific hypervisor:
+
+    <CodeGroup>
+    ```bash title="Show hypervisor details"
+    openstack hypervisor show <hostname>
+    ```
+    </CodeGroup>
+
+    Confirm:
+    - `hypervisor_type`: `QEMU`
+    - `cpu_info`: non-empty (indicates hardware extension detection)
+    - `free_ram_mb` and `free_disk_gb`: reflect actual host resources
+  </Step>
+
+  <Step title="Launch a Test Instance">
+    Boot a minimal instance to confirm end-to-end hypervisor operation:
+
+    <CodeGroup>
+    ```bash title="Launch test instance"
+    openstack server create \
+      --flavor m1.tiny \
+      --image <image-id> \
+      --network <network-id> \
+      hypervisor-test
+    ```
+    </CodeGroup>
+
+    Verify the instance reaches **ACTIVE** status:
+
+    <CodeGroup>
+    ```bash title="Check instance status"
+    openstack server show hypervisor-test -c status -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Storage Backend Selection">
+    - Use **QCOW2** for general workloads — snapshots and copy-on-write reduce disk provisioning time
+    - Use **raw / flat** for I/O-intensive workloads (databases, high-throughput services) where snapshot capability is not required
+    - Use **Ceph RBD** in multi-node clusters — enables live migration without shared filesystem, and supports instant cloning from Glance images
+    - Avoid **LVM** in large-scale deployments; volume group management adds operational overhead
+  </Accordion>
+
+  <Accordion title="Kernel and OS Maintenance">
+    - Pin compute nodes to **LTS kernel series** — avoid rolling kernel upgrades on production compute hosts
+    - For Ceph storage nodes, maintain kernel **5.3+** to ensure full RBD image feature compatibility
+    - Test kernel updates in a staging environment before rolling to production hypervisors
+    - Deploy compute nodes on **CentOS 9** or **Ubuntu 22.04 LTS** for maximum Ceph storage support coverage
+  </Accordion>
+
+  <Accordion title="CPU Mode for Live Migration">
+    - Use `cpu_mode = host-model` as the default for compute clusters — it balances performance with cross-host migration compatibility
+    - Reserve `host-passthrough` for isolated clusters where all physical hosts have identical CPU models
+    - Document the CPU model of each compute host; heterogeneous clusters require careful flavor and migration zone planning
+  </Accordion>
+
+  <Accordion title="Network Performance">
+    - Always load the `vhost_net` module on compute nodes — it routes virtio network traffic through the kernel, bypassing QEMU userspace overhead
+    - Persist `vhost_net` in `/etc/modules-load.d/` to ensure it loads on reboot
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: no supported architecture for os type 'hvm'">
+    **Cause:** The hypervisor kernel module is not loaded.
+
+    **Resolution:**
+
+    <CodeGroup>
+    ```bash title="Reload kernel module (Intel)"
+    modprobe kvm_intel
+    ```
+
+    ```bash title="Reload kernel module (AMD)"
+    modprobe kvm_amd
+    ```
+    </CodeGroup>
+
+    If the module fails to load, confirm that hardware virtualization is enabled in BIOS and that the host is not itself a virtual machine without nested virtualization enabled.
+  </Accordion>
+
+  <Accordion title="Permission denied on /dev/kvm">
+    **Cause:** The `nova` user lacks access to `/dev/kvm`, typically because the module was loaded before `nova-compute` was installed.
+
+    **Resolution:**
+
+    <CodeGroup>
+    ```bash title="Retrigger udev rules"
+    udevadm trigger
+    ```
+    </CodeGroup>
+
+    This re-applies udev device rules and corrects permissions on `/dev/kvm` without requiring a reboot.
+  </Accordion>
+
+  <Accordion title="Compute node not appearing in hypervisor list">
+    **Cause:** `nova-compute` service is not running or failed to register.
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Check service status">
+        <CodeGroup>
+        ```bash title="Check nova-compute"
+        systemctl status nova-compute
+        ```
+        </CodeGroup>
+      </Step>
+      <Step title="Review logs">
+        <CodeGroup>
+        ```bash title="Tail compute logs"
+        journalctl -u nova-compute -n 100 --no-pager
+        ```
+        </CodeGroup>
+      </Step>
+      <Step title="Restart the service">
+        <CodeGroup>
+        ```bash title="Restart nova-compute"
+        systemctl restart nova-compute
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Slow instance boot with large images">
+    **Cause:** Xloud Compute is downloading the full image from the image service rather than cloning it via RBD.
+
+    **Resolution:** Ensure both the image service and compute storage backend are configured to use the same Ceph RBD pool. With matching backends, Compute performs a direct RBD clone instead of a full image download, significantly reducing boot time.
+
+    Verify by checking `/etc/nova/nova.conf`:
+
+    <CodeGroup>
+    ```ini title="Required RBD settings"
+    [libvirt]
+    images_type = rbd
+    images_rbd_pool = vms
+    images_rbd_ceph_conf = /etc/ceph/ceph.conf
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

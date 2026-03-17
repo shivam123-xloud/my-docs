@@ -1,0 +1,158 @@
+---
+title: "Profile & Account Security"
+description: "Manage your display name, profile photo, dashboard theme, two-factor authentication, and VM login credentials."
+---
+
+## Profile Management
+
+Users can manage personal profile details — including display name, email, profile photo, and dashboard theme — directly from the Settings panel.
+
+<Steps>
+  <Step title="Update Username and Email">
+    Navigate to **Settings → User Settings**.
+
+    | Field | Description |
+    |---|---|
+    | Username | Your display name shown in the dashboard |
+    | Email | Contact address for platform notifications and alerts |
+
+    Click **Save** to apply changes.
+  </Step>
+
+  <Step title="Upload a Profile Photo">
+    Navigate to **Settings → User Settings → Profile Picture**.
+
+    Click **Upload Photo** and select an image file (JPEG or PNG, max 2 MB). The photo appears in the top-right user menu and any activity logs attributed to your account.
+
+    <Note>
+      Profile photos are stored per-user and are visible to other users in shared project views and audit logs.
+    </Note>
+  </Step>
+
+  <Step title="Select a Dashboard Theme">
+    Navigate to **Settings → User Settings**.
+
+    | Theme | Description |
+    |---|---|
+    | Light | Default white/grey interface |
+    | Dark | Dark background — reduces eye strain in low-light environments |
+
+    The theme applies immediately without a page reload.
+  </Step>
+</Steps>
+
+---
+
+## Two-Factor Authentication (2FA)
+
+Two-Factor Authentication adds a second verification step at login, requiring a time-based one-time password (TOTP) in addition to your password.
+
+<Steps>
+  <Step title="Enable 2FA">
+    Navigate to **Settings → User Settings → Two-Factor Authentication**.
+
+    Click **Enable Two-Factor Authentication**.
+  </Step>
+  <Step title="Scan the QR Code">
+    Open an authenticator app on your mobile device (Google Authenticator, Authy, or any TOTP-compatible app).
+
+    Scan the QR code displayed on screen. The app will add an Xloud entry generating a new 6-digit code every 30 seconds.
+  </Step>
+  <Step title="Verify and Save">
+    Enter the current 6-digit code from your authenticator app into the verification field.
+
+    Click **Verify and Enable**. 2FA is now active on your account.
+
+    <Warning>
+      Save the backup recovery codes displayed after enabling 2FA. If you lose access to your authenticator app and have no recovery codes, you will be locked out of your account and require administrator intervention to regain access.
+    </Warning>
+  </Step>
+  <Step title="Log In with 2FA">
+    On subsequent logins, after entering your username and password, a second screen prompts for the 6-digit TOTP code from your authenticator app. Enter the current code and click **Verify**.
+  </Step>
+  <Step title="Disable 2FA (if needed)">
+    Navigate to **Settings → User Settings → Two-Factor Authentication → Disable**.
+
+    Enter your current password to confirm. 2FA is removed from your account immediately.
+
+    <Warning>
+      Disabling 2FA reduces account security. Only disable if migrating to a new authenticator device. Re-enable immediately after completing the migration.
+    </Warning>
+  </Step>
+</Steps>
+
+---
+
+## VM Login Credentials
+
+Xloud stores and manages login credentials for both Linux and Windows instances, accessible from the console without requiring external SSH clients or RDP tools.
+
+### Linux VM Credentials
+
+Linux instances use SSH key pairs for authentication. The injected public key is associated with your Xloud account and stored per instance.
+
+<Steps>
+  <Step title="View Injected Key for an Instance">
+    Navigate to **Project → Compute → Instances → [Instance Name] → Overview tab**.
+
+    The **Key Pair** field shows which SSH key pair was injected at launch.
+  </Step>
+  <Step title="Retrieve Linux Login Credentials from Console">
+    Navigate to **Project → Compute → Instances → [Instance] → Actions → Console**.
+
+    For images that support password-based console access, the initial credentials are displayed in the console output at first boot. Retrieve them:
+
+    <CodeGroup>
+    ```bash title="View console log for injected credentials"
+    openstack console log show <instance-id> | grep -i password
+    ```
+    </CodeGroup>
+
+    <Note>
+      Most Linux cloud images disable password authentication by default and rely exclusively on SSH key pairs. Use the key pair associated with the instance for SSH access rather than password-based console login.
+    </Note>
+  </Step>
+  <Step title="Reset Linux VM Password via Console">
+    If SSH access is lost, use the VNC console to reset credentials directly on the instance:
+
+    Navigate to **Actions → Console**, then from within the OS:
+
+    <CodeGroup>
+    ```bash title="Reset password from inside instance (via VNC console)"
+    sudo passwd ubuntu    # or the appropriate default user
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+### Windows VM Credentials
+
+Windows instances use an auto-generated administrator password encrypted with the instance's key pair.
+
+<Steps>
+  <Step title="Retrieve Windows Admin Password">
+    Navigate to **Project → Compute → Instances → [Instance] → Actions → Retrieve Password**.
+
+    | Field | Description |
+    |---|---|
+    | Private Key | Paste the contents of the `.pem` private key file associated with the instance's key pair |
+
+    Click **Decrypt Password**. The decrypted administrator password is displayed.
+
+    <Warning>
+      The decrypted password is shown only in this dialog. Copy and store it securely — closing the dialog without saving the password requires a password reset via the console.
+    </Warning>
+  </Step>
+  <Step title="Connect via RDP">
+    Use the decrypted password with any RDP client:
+
+    | Field | Value |
+    |---|---|
+    | Host | Instance floating IP address |
+    | Username | `Administrator` |
+    | Password | Decrypted password from above |
+  </Step>
+  <Step title="Reset Windows Password via Console">
+    If RDP access is unavailable, navigate to **Actions → Console** to access the Windows instance via browser-based VNC and reset the Administrator password through the Windows UI.
+  </Step>
+</Steps>

@@ -1,0 +1,113 @@
+---
+title: "Network Management"
+description: "Create networks, subnets, routers, and ports to connect your Xloud instances to each other and to the internet."
+---
+
+## Overview
+
+Xloud networking gives project users full control over virtual network topology — from isolated private networks to routed, internet-accessible environments. Each project manages its own networks, subnets, and routers independently.
+
+---
+
+## Create Networks, Subnets, and Routers
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Network">
+        Navigate to **Project → Network → Networks → Create Network**.
+
+        **Network tab:**
+
+        | Field | Description |
+        |---|---|
+        | Network Name | e.g., `app-network` |
+        | Enable Admin State | Keep checked |
+        | Create Subnet | Check to define a subnet immediately |
+        | Availability Zone Hints | Optional AZ restriction |
+
+        **Subnet tab:**
+
+        | Field | Description |
+        |---|---|
+        | Subnet Name | e.g., `app-subnet` |
+        | Network Address | CIDR (e.g., `192.168.10.0/24`) |
+        | IP Version | IPv4 or IPv6 |
+        | Gateway IP | Leave blank for auto-assignment from the CIDR |
+        | Disable Gateway | Check only if no routing is required |
+
+        **Subnet Details tab:**
+
+        | Field | Description |
+        |---|---|
+        | Enable DHCP | Keep checked for automatic IP assignment |
+        | DNS Name Servers | Optional — e.g., `8.8.8.8`, `1.1.1.1` |
+        | Allocation Pools | Optional — restrict DHCP pool range |
+      </Step>
+      <Step title="Create a Router">
+        Navigate to **Project → Network → Routers → Create Router**.
+
+        | Field | Description |
+        |---|---|
+        | Router Name | e.g., `main-router` |
+        | Admin State | Keep enabled |
+        | External Network | Select the provider/external network for internet access |
+
+        After creation, open the router and click **Add Interface** to connect your internal subnet.
+      </Step>
+      <Step title="Configure a Port">
+        Navigate to **Project → Network → Networks → [Select Network] → Ports**.
+
+        Ports can have fixed IPs, security groups, and MAC addresses configured independently of instances — useful for reserved IPs, virtual appliances, or load balancer VIPs.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create network and subnet"
+    openstack network create app-network
+
+    openstack subnet create \
+      --network app-network \
+      --subnet-range 192.168.10.0/24 \
+      --dns-nameserver 8.8.8.8 \
+      app-subnet
+    ```
+
+    ```bash title="Create router and connect subnet"
+    openstack router create main-router
+    openstack router set --external-gateway <external-network> main-router
+    openstack router add subnet main-router app-subnet
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Network and Subnet Exist">
+    <CodeGroup>
+    ```bash title="List networks"
+    openstack network list
+    ```
+
+    ```bash title="List subnets"
+    openstack subnet list
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Test Outbound Connectivity from Instance">
+    From inside an instance connected to the network:
+
+    <CodeGroup>
+    ```bash title="Test outbound internet access"
+    curl -s https://ifconfig.me
+    ```
+    </CodeGroup>
+
+    A public IP address must be returned, confirming the router and external gateway are correctly configured.
+  </Step>
+</Steps>

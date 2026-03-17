@@ -55,7 +55,8 @@
           {
             "group": "Image Management",
             "pages": [
-              "Documentation/Image Management/how to upload an image on Openstack"
+              "Documentation/Image Management/how to upload an image on Openstack",
+              "Documentation/Image Management/obtaining-images"
             ]
           },
           {
@@ -69,6 +70,76 @@
             "pages": [
               "Documentation/Network Management/router",
               "Documentation/Network Management/how to connect multiple interfaces"
+            ]
+          },
+          {
+            "group": "Hypervisor Management",
+            "pages": [
+              "Documentation/Hypervisor Management/hypervisor-configuration"
+            ]
+          },
+          {
+            "group": "Availability Features",
+            "pages": [
+              "Documentation/Availability Features/instance-migration",
+              "Documentation/Availability Features/node-evacuation",
+              "Documentation/Availability Features/compute-scheduling",
+              "Documentation/Availability Features/volume-migration"
+            ]
+          },
+          {
+            "group": "RBAC",
+            "pages": [
+              "Documentation/RBAC/rbac",
+              "Documentation/RBAC/resource-group-access",
+              "Documentation/RBAC/data-protection-rbac",
+              "Documentation/RBAC/service-plans-rbac",
+              "Documentation/RBAC/script-execution-rbac"
+            ]
+          },
+          {
+            "group": "Cluster Lifecycle Management",
+            "pages": [
+              "Documentation/Cluster Lifecycle Management/cluster-lifecycle",
+              "Documentation/Cluster Lifecycle Management/capacity-expansion",
+              "Documentation/Cluster Lifecycle Management/controlled-node-removal",
+              "Documentation/Cluster Lifecycle Management/failure-recovery"
+            ]
+          },
+          {
+            "group": "User Profile",
+            "pages": [
+              "Documentation/User Profile/user-profile",
+              "Documentation/User Profile/profile-account-security",
+              "Documentation/User Profile/security-configuration",
+              "Documentation/User Profile/image-management",
+              "Documentation/User Profile/instance-management",
+              "Documentation/User Profile/volume-management",
+              "Documentation/User Profile/network-management",
+              "Documentation/User Profile/object-storage"
+            ]
+          },
+          {
+            "group": "Resource Allocation",
+            "pages": [
+              "Documentation/Resource Allocation/resource-allocation"
+            ]
+          },
+          {
+            "group": "Identity Services",
+            "pages": [
+              "Documentation/Identity Services/identity-concepts",
+              "Documentation/Identity Services/federation-mapping"
+            ]
+          },
+          {
+            "group": "Data Protection",
+            "pages": [
+              "Documentation/Data Protection/volume-backups",
+              "Documentation/Data Protection/object-storage",
+              "Documentation/Data Protection/volume-management",
+              "Documentation/Data Protection/dashboard",
+              "Documentation/Data Protection/compute-api"
             ]
           },
           {

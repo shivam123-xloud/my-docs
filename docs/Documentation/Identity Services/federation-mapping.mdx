@@ -1,0 +1,681 @@
+---
+title: "Federation Identity Mapping"
+description: "Configure identity provider attribute mapping rules in the Xloud Identity Service to translate external IdP assertions into Xloud users, groups, projects, and role assignments."
+---
+
+## Overview
+
+Xloud Identity Federation enables users from external identity providers (IdPs) — corporate LDAP, Active Directory, SAML 2.0 providers, or OIDC providers — to authenticate to Xloud without requiring a locally managed Xloud account. The mapping engine translates IdP-supplied attributes (user name, group memberships, organization, department) into Xloud identity objects at login time.
+
+<CardGroup cols={3}>
+  <Card title="Attribute Mapping" icon="arrow-right-arrow-left">
+    Transform IdP-supplied environment variables into Xloud user identities, group memberships, and project assignments using declarative JSON rules.
+  </Card>
+  <Card title="Ephemeral Users" icon="user-clock">
+    Federated users are created dynamically at login — no pre-provisioning required. Attributes are derived entirely from the IdP assertion and the mapping rules.
+  </Card>
+  <Card title="Auto-Provisioned Projects" icon="folder-plus">
+    Projects can be created automatically on first federated login, with roles assigned inline — enabling self-service onboarding for federated identities.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture
+
+```
+External IdP (SAML / OIDC / Kerberos)
+         │
+         │  Assertion (attributes: email, groups, org, dept)
+         ▼
+  Apache Auth Module
+  (Shibboleth / mod_auth_openidc / Mellon)
+         │
+         │  Environment variables (HTTP_OIDC_EMAIL, HTTP_SHIB_EP_AFFILIATION...)
+         ▼
+  Xloud Identity Service — Mapping Engine
+         │
+         │  Evaluates rules: Remote conditions → Local assignments
+         ▼
+  Xloud Token (user identity + roles + project/domain scope)
+```
+
+### Supported Authentication Modules
+
+| Module | Protocol | Notes |
+|---|---|---|
+| `mod_shib` / Shibboleth | SAML 2.0 | Enterprise IdP integration (ADFS, Okta, Shibboleth IdP) |
+| `mod_auth_openidc` | OpenID Connect | OAuth2/OIDC providers (Keycloak, Azure AD, Google) |
+| `mod_auth_mellon` | SAML 2.0 | Lightweight SAML SP alternative to Shibboleth |
+
+---
+
+## Core Concepts
+
+### Mapping Structure
+
+A mapping is a JSON document containing an ordered array of **rules**. Each rule has two sections:
+
+| Section | Purpose |
+|---|---|
+| `remote` | Conditions evaluated against IdP-supplied attributes. All conditions in a rule must match for the rule to fire. |
+| `local` | Assignments applied when the rule matches — user identity, group memberships, project assignments, domain scope. |
+
+### Rule Evaluation
+
+- Rules are evaluated **sequentially** — first matching rule wins for user identity
+- **All** matching rules apply for group assignments (additive)
+- Direct mappings from `remote` conditions are available for variable substitution in `local` using `{0}`, `{1}`, etc.
+- When duplicate local properties appear across multiple matching rules, the **first occurrence wins**
+
+### User Types
+
+| Type | How Created | Pre-existence Required | Use Case |
+|---|---|---|---|
+| **Ephemeral** (default) | Created dynamically at login | No | External users without Xloud accounts |
+| **Local** (`type: local`) | Must exist in Xloud before login | Yes — 401 if missing | Linking federated login to existing Xloud account |
+
+---
+
+## Pre-existence Requirements
+
+<Warning>
+  Understanding which objects must exist before federation can succeed is critical. Missing objects cause silent failures or authentication errors.
+</Warning>
+
+| Object | Must Pre-exist? | Behavior if Missing |
+|---|---|---|
+| Local User | Yes (if `type: local`) | Authentication fails with 401 |
+| Ephemeral User | No | Created dynamically at login |
+| Group | **Yes** | Silently skipped — no error, no group membership assigned |
+| Project | No | Auto-provisioned if defined in `projects` section |
+| Role | **Yes** | Authentication fails — roles are never auto-created |
+| Domain | **Yes** | Authentication fails — domains are never auto-created |
+
+<Warning>
+  Groups that do not exist at login time are **silently ignored**. There is no error. Users will authenticate successfully but without the expected group memberships and inherited role assignments. Always verify groups exist before deploying mapping rules that reference them.
+</Warning>
+
+---
+
+## Prerequisites
+
+- Xloud Identity Service configured with federation support (`[federation]` section in `keystone.conf`)
+- Apache authentication module installed and configured for the chosen IdP protocol
+- Target domains, groups, and roles created in Xloud before mapping rules are deployed
+- SSL/TLS configured between Xloud and the IdP
+- Service provider metadata registered with the IdP
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create an Identity Provider">
+        Navigate to **Admin → Identity → Identity Providers → Register Identity Provider**.
+
+        | Field | Description |
+        |---|---|
+        | ID | Unique IdP identifier (e.g., `corporate-adfs`, `keycloak-prod`) |
+        | Remote IDs | The IdP's entity ID (from IdP metadata) |
+        | Enabled | Must be checked |
+        | Description | Optional |
+      </Step>
+
+      <Step title="Create a Mapping">
+        Navigate to **Admin → Identity → Mappings → Create Mapping**.
+
+        | Field | Description |
+        |---|---|
+        | Mapping ID | Unique name for this mapping (e.g., `adfs-engineering-mapping`) |
+        | Rules | Paste the JSON rules document |
+
+        Click **Create Mapping**.
+      </Step>
+
+      <Step title="Create a Federation Protocol">
+        Navigate to **Admin → Identity → Identity Providers → [Select IdP] → Protocols → Add Protocol**.
+
+        | Field | Description |
+        |---|---|
+        | Protocol ID | `saml2` or `openid` |
+        | Mapping | Select the mapping created above |
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Create an Identity Provider
+
+    <CodeGroup>
+    ```bash title="Register an identity provider"
+    openstack identity provider create \
+      --remote-id https://idp.example.com/adfs/services/trust \
+      --description "Corporate ADFS" \
+      corporate-adfs
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 2 — Create Pre-requisite Objects
+
+    Groups and roles referenced in mappings must exist before the mapping is deployed:
+
+    <CodeGroup>
+    ```bash title="Create groups for federated users"
+    openstack group create --domain Default federated-engineers
+    openstack group create --domain Default federated-admins
+    openstack group create --domain Default federated-readonly
+    ```
+
+    ```bash title="Assign roles to groups on target projects"
+    openstack role add --group federated-engineers --project engineering-prod member
+    openstack role add --group federated-admins --project engineering-prod admin
+    openstack role add --group federated-readonly --project engineering-prod reader
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 3 — Create the Mapping
+
+    Save the mapping rules as a JSON file and register it:
+
+    <CodeGroup>
+    ```bash title="Create mapping from file"
+    openstack mapping create \
+      --rules /etc/keystone/mappings/adfs-engineering.json \
+      adfs-engineering-mapping
+    ```
+
+    ```bash title="Update existing mapping"
+    openstack mapping set \
+      --rules /etc/keystone/mappings/adfs-engineering.json \
+      adfs-engineering-mapping
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 4 — Associate Mapping with Protocol
+
+    <CodeGroup>
+    ```bash title="Create federation protocol"
+    openstack federation protocol create saml2 \
+      --identity-provider corporate-adfs \
+      --mapping adfs-engineering-mapping
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 5 — Test the Mapping
+
+    Validate mapping rules against a sample input before deployment:
+
+    <CodeGroup>
+    ```bash title="Test mapping engine"
+    keystone-manage mapping_engine \
+      --rules /etc/keystone/mappings/adfs-engineering.json \
+      --input /etc/keystone/mappings/test-assertion.json
+    ```
+    </CodeGroup>
+
+    Create a test assertion file matching the format your IdP will send:
+
+    <CodeGroup>
+    ```json title="test-assertion.json — Sample IdP attribute input"
+    {
+      "assertion": {
+        "HTTP_SHIB_EP_AFFILIATION": "staff",
+        "HTTP_OIDC_EMAIL": "john.doe@engineering.example.com",
+        "HTTP_SHIB_EP_ENTITLEMENT": "engineering;backend-team",
+        "REMOTE_USER": "john.doe@engineering.example.com"
+      }
+    }
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Mapping Rules Reference
+
+### Remote Condition Types
+
+| Condition | Type | Description |
+|---|---|---|
+| `empty` | Match any | Matches any value of the attribute — used to capture the value for substitution |
+| `any_one_of` | Allowlist | Attribute value must match one of the listed values |
+| `not_any_of` | Denylist | Attribute value must NOT match any listed value |
+| `whitelist` | Filter | Keep only listed values from a multi-value attribute |
+| `blacklist` | Filter | Remove listed values; pass remaining values through |
+| `regex: true` | Pattern | Enable regex matching on `any_one_of` / `not_any_of` values |
+
+---
+
+## Mapping Rule Examples
+
+### Basic Ephemeral User with Group Assignment
+
+All authenticated users from the IdP are mapped to an ephemeral user and placed in the `federated-engineers` group:
+
+<CodeGroup>
+```json title="basic-ephemeral-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "type": "ephemeral"
+          }
+        },
+        {
+          "group": {
+            "domain": {
+              "name": "Default"
+            },
+            "name": "federated-engineers"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "REMOTE_USER",
+          "condition": "empty"
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+`{0}` substitutes the captured value from the first `empty` condition — in this case the `REMOTE_USER` attribute, which becomes the ephemeral user's name.
+
+---
+
+### Role-Based Group Assignment
+
+Users are placed into different Xloud groups based on their IdP role/affiliation attribute:
+
+<CodeGroup>
+```json title="role-based-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "REMOTE_USER",
+          "condition": "empty"
+        }
+      ]
+    },
+    {
+      "local": [
+        {
+          "group": {
+            "domain": { "name": "Default" },
+            "name": "federated-admins"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "HTTP_SHIB_EP_ENTITLEMENT",
+          "any_one_of": ["xloud-admin", "platform-admin"]
+        }
+      ]
+    },
+    {
+      "local": [
+        {
+          "group": {
+            "domain": { "name": "Default" },
+            "name": "federated-engineers"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "HTTP_SHIB_EP_AFFILIATION",
+          "any_one_of": ["staff", "employee"]
+        }
+      ]
+    },
+    {
+      "local": [
+        {
+          "group": {
+            "domain": { "name": "Default" },
+            "name": "federated-readonly"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "HTTP_SHIB_EP_AFFILIATION",
+          "any_one_of": ["contractor", "external"]
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+<Note>
+  The first rule identifies the user. Subsequent rules are additive — a user matching both the `staff` affiliation rule and the `xloud-admin` entitlement rule will be assigned to **both** `federated-engineers` and `federated-admins`.
+</Note>
+
+---
+
+### Local User Linking
+
+Map a federated login to an existing local Xloud account using the email attribute:
+
+<CodeGroup>
+```json title="local-user-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "domain": { "name": "Default" },
+            "type": "local"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "HTTP_OIDC_EMAIL",
+          "condition": "empty"
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+<Warning>
+  `type: local` requires the user to exist in Xloud before login. If the user does not exist, authentication returns **401 Unauthorized**. Use ephemeral users for self-service onboarding; reserve local linking for pre-provisioned service accounts.
+</Warning>
+
+---
+
+### Auto-Provisioned Projects with Inline Role Assignment
+
+Projects are created automatically on first login if they do not exist:
+
+<CodeGroup>
+```json title="auto-project-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "type": "ephemeral"
+          }
+        },
+        {
+          "projects": [
+            {
+              "name": "{1}-workspace",
+              "roles": [
+                {
+                  "name": "member"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "remote": [
+        {
+          "type": "REMOTE_USER",
+          "condition": "empty"
+        },
+        {
+          "type": "HTTP_SHIB_EP_ORGUNIT",
+          "condition": "empty"
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+`{1}` substitutes the second captured value (`HTTP_SHIB_EP_ORGUNIT`) to dynamically name the project after the user's organizational unit (e.g., `backend-workspace`, `devops-workspace`).
+
+<Info>
+  Auto-provisioned projects are created within the IdP's configured domain. The `roles` array inside `projects` is required — a project without role assignments would be inaccessible to the user.
+</Info>
+
+---
+
+### Regex-Based Matching
+
+Match users whose group memberships contain a specific pattern:
+
+<CodeGroup>
+```json title="regex-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "type": "ephemeral"
+          }
+        },
+        {
+          "group": {
+            "domain": { "name": "Default" },
+            "name": "federated-engineers"
+          }
+        }
+      ],
+      "remote": [
+        {
+          "type": "REMOTE_USER",
+          "condition": "empty"
+        },
+        {
+          "type": "HTTP_SHIB_EP_ENTITLEMENT",
+          "any_one_of": ["^xloud-.*-engineer$"],
+          "regex": true
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+This matches any entitlement value matching the pattern `xloud-<anything>-engineer` (e.g., `xloud-backend-engineer`, `xloud-platform-engineer`).
+
+---
+
+### Whitelist Group Filtering
+
+Pass through only approved group memberships from the IdP, discarding all others:
+
+<CodeGroup>
+```json title="whitelist-mapping.json"
+{
+  "rules": [
+    {
+      "local": [
+        {
+          "user": {
+            "name": "{0}",
+            "type": "ephemeral"
+          }
+        },
+        {
+          "groups": "{1}",
+          "domain": { "name": "Default" }
+        }
+      ],
+      "remote": [
+        {
+          "type": "REMOTE_USER",
+          "condition": "empty"
+        },
+        {
+          "type": "HTTP_SHIB_EP_ENTITLEMENT",
+          "whitelist": [
+            "federated-engineers",
+            "federated-admins",
+            "federated-readonly"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+</CodeGroup>
+
+Only IdP group values matching the whitelist are passed through as Xloud group assignments. All other IdP group values are discarded.
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Test Rules Before Deployment">
+    <CodeGroup>
+    ```bash title="Validate mapping rules offline"
+    keystone-manage mapping_engine \
+      --rules /etc/keystone/mappings/adfs-engineering.json \
+      --input /etc/keystone/mappings/test-assertion.json
+    ```
+    </CodeGroup>
+
+    Review the output for the expected user identity, group memberships, and project assignments. Fix any discrepancies before deploying to the live mapping.
+  </Step>
+  <Step title="Enable Debug Logging for Live Testing">
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf — Temporary debug"
+    [DEFAULT]
+    debug = True
+    ```
+    </CodeGroup>
+
+    Then tail Identity Service logs during a test login:
+
+    <CodeGroup>
+    ```bash title="Watch mapping engine evaluation"
+    tail -f /var/log/keystone/keystone.log | grep -i "mapping\|rule\|group\|skip"
+    ```
+    </CodeGroup>
+
+    Disable debug logging after testing — it logs security-sensitive data.
+  </Step>
+  <Step title="Confirm Token Contains Expected Roles">
+    After a successful federated login, inspect the token to confirm the correct roles are present:
+
+    <CodeGroup>
+    ```bash title="Inspect federated token"
+    openstack token issue --os-auth-type v3samlpassword ...
+    openstack token show <token-id>
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Verify Group Membership">
+    <CodeGroup>
+    ```bash title="List group members after federated login"
+    openstack group contains user federated-engineers <user-id>
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Separate User Identification from Group Assignment Rules">
+    Split the user identity rule from group assignment rules. Use the first rule exclusively to capture and set the user identity. Use subsequent rules for conditional group assignments. This makes rules easier to read, test, and modify independently.
+  </Accordion>
+  <Accordion title="Pre-create All Referenced Groups">
+    Groups missing at login time are silently skipped — there is no error and no warning in the default log level. Always create groups in Xloud before deploying mapping rules that reference them. Add a deployment check that validates all mapping-referenced groups exist.
+  </Accordion>
+  <Accordion title="Use Whitelists Over Blacklists">
+    Prefer `whitelist` over `blacklist` for group filtering. Whitelists explicitly enumerate permitted values — new IdP groups added in future will not accidentally gain access. Blacklists require ongoing updates as new IdP groups are added.
+  </Accordion>
+  <Accordion title="Test Offline Before Deploying">
+    Always run `keystone-manage mapping_engine` against representative assertion inputs before updating a live mapping. A broken mapping can lock out all federated users instantly and is not self-healing — it requires admin intervention to correct.
+  </Accordion>
+  <Accordion title="Scope Auto-Provisioned Projects to IdP Domain">
+    When using the `projects` auto-provisioning feature, configure a dedicated domain for the IdP in `keystone.conf`. This isolates auto-provisioned projects from manually managed ones and simplifies quota and policy management for federated workspaces.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Federated login returns 401 Unauthorized">
+    **Cause (local users):** The user specified by the mapping does not exist in the Xloud identity backend.
+
+    **Resolution:** Either create the local user, or change the mapping to use `type: ephemeral`.
+
+    **Cause (missing role):** A role referenced in the `projects` section of the mapping does not exist.
+
+    **Resolution:** Create all roles referenced in mapping rules before deploying:
+
+    <CodeGroup>
+    ```bash title="Create missing role"
+    openstack role create <role-name>
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="User authenticates but has no project access">
+    **Cause:** Groups referenced in the mapping do not exist, so they are silently skipped. The user has no group memberships and therefore no role assignments.
+
+    **Resolution:** Create all groups referenced in the mapping:
+
+    <CodeGroup>
+    ```bash title="Verify group exists"
+    openstack group show federated-engineers
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Variable substitution produces wrong user name">
+    **Cause:** The `empty` condition captures the wrong attribute, or the attribute order in `remote` does not match the substitution index used in `local`.
+
+    **Resolution:** Substitution index `{N}` maps to the Nth `empty` condition in the `remote` array (0-indexed). Use `keystone-manage mapping_engine` with debug output to trace the actual substituted values.
+  </Accordion>
+  <Accordion title="Regex conditions not matching">
+    **Cause:** `regex: true` is missing from the condition block containing the pattern.
+
+    **Resolution:** Add `"regex": true` as a sibling key to `any_one_of` in the condition that uses a regex pattern. Without this flag, the value is treated as a literal string.
+  </Accordion>
+</AccordionGroup>

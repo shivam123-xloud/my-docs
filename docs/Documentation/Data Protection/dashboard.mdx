@@ -1,0 +1,204 @@
+---
+title: "Dashboard Overview"
+description: "Manage Xloud compute, storage, networking, and data protection operations through the unified web-based Xloud Dashboard."
+---
+
+## Overview
+
+The Xloud Dashboard provides a browser-based graphical interface for managing all Xloud platform services — compute instances, block storage volumes, object storage containers, network topology, and user/project administration. It is the primary interface for operators and end users who prefer GUI-based workflows over CLI tooling.
+
+<CardGroup cols={3}>
+  <Card title="Project View" icon="user">
+    Self-service interface for project members. Manage instances, volumes, images, networks, and object storage within project quota limits.
+  </Card>
+  <Card title="Admin View" icon="shield">
+    Platform-wide visibility for administrators. Manage all projects, hypervisors, volume backends, host aggregates, flavors, and quotas.
+  </Card>
+  <Card title="Identity View" icon="key">
+    User, role, and project management via the Xloud Identity service. Assign roles, manage credentials, and configure access policies.
+  </Card>
+</CardGroup>
+
+---
+
+## Dashboard Panels
+
+### Project Panels
+
+| Panel | Path | Capabilities |
+|---|---|---|
+| **Compute → Instances** | Project → Compute → Instances | Launch, stop, reboot, snapshot, resize, migrate instances |
+| **Compute → Images** | Project → Compute → Images | View, upload, and manage VM images |
+| **Compute → Key Pairs** | Project → Compute → Key Pairs | Create and import SSH key pairs |
+| **Volumes → Volumes** | Project → Volumes → Volumes | Create, attach, detach, snapshot, backup, and restore volumes |
+| **Volumes → Snapshots** | Project → Volumes → Snapshots | View and manage volume snapshots |
+| **Volumes → Backups** | Project → Volumes → Backups | Create, restore, and delete volume backups |
+| **Network → Networks** | Project → Network → Networks | Create and manage project networks and subnets |
+| **Network → Routers** | Project → Network → Routers | Create and configure virtual routers |
+| **Network → Security Groups** | Project → Network → Security Groups | Manage inbound/outbound firewall rules |
+| **Network → Floating IPs** | Project → Network → Floating IPs | Allocate and associate public IP addresses |
+| **Object Store → Containers** | Project → Object Store → Containers | Create containers, upload/download objects |
+
+### Admin Panels
+
+| Panel | Path | Capabilities |
+|---|---|---|
+| **Compute → Hypervisors** | Admin → Compute → Hypervisors | View hypervisor capacity, state, and instance placement |
+| **Compute → Host Aggregates** | Admin → Compute → Host Aggregates | Create aggregates, assign hosts, manage AZ metadata |
+| **Compute → Flavors** | Admin → Compute → Flavors | Define instance sizes (vCPU, RAM, disk, extra specs) |
+| **Volume → Volumes** | Admin → Volume → Volumes | View all volumes across all projects |
+| **Volume → Volume Types** | Admin → Volume → Volume Types | Define storage tiers and backend mappings |
+| **System → Services** | Admin → System → System Information | View service health and endpoint status |
+| **System → Quotas** | Admin → System → Defaults | Set default quotas for new projects |
+
+---
+
+## Prerequisites
+
+- Network access to the Xloud Dashboard URL (typically `http(s)://controller/dashboard`)
+- Valid Xloud user credentials (username, password, and domain)
+- Browser: Chrome, Firefox, Edge (current stable release)
+
+<Info>
+  The Dashboard supports pluggable panels — additional service UIs (load balancers, DNS, container orchestration) can be installed as plugins and appear as additional menu items.
+</Info>
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    ### Logging In
+
+    <Steps>
+      <Step title="Access the Dashboard">
+        Navigate to the Xloud Dashboard URL in a supported browser.
+      </Step>
+      <Step title="Enter Credentials">
+        | Field | Value |
+        |---|---|
+        | Domain | Your Xloud domain (default: `Default`) |
+        | Username | Your Xloud username |
+        | Password | Your Xloud password |
+      </Step>
+      <Step title="Select Project">
+        After login, use the project selector in the top navigation bar to switch between projects. All resource views are scoped to the selected project.
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Managing Data Protection via Dashboard
+
+    <Steps>
+      <Step title="Create a Volume Snapshot">
+        Go to **Project → Volumes → Volumes**.
+
+        In **Actions** for the target volume, select **Create Snapshot**. Provide a name and click **Create Volume Snapshot**.
+      </Step>
+      <Step title="Create a Volume Backup">
+        In **Actions** for the target volume, select **Create Backup**. Configure name, incremental flag, and optional container. Click **Create Volume Backup**.
+      </Step>
+      <Step title="Restore a Volume Backup">
+        Go to **Project → Volumes → Backups**.
+
+        In **Actions** for the backup, select **Restore Backup**. Choose the target volume or create a new one.
+      </Step>
+      <Step title="Create an Instance Snapshot">
+        Go to **Project → Compute → Instances**.
+
+        In **Actions** for the target instance, select **Create Snapshot**. This creates an image in the Image Service from the instance's current disk state.
+      </Step>
+      <Step title="Upload and Manage Backup Objects">
+        Go to **Project → Object Store → Containers**.
+
+        Create a container (e.g., `manual-backups`), then upload backup archives directly from the browser.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    The Xloud Dashboard is a GUI-only service. Administrative configuration of the Dashboard itself is performed on the controller node.
+
+    ### Check Dashboard Service Status
+
+    <CodeGroup>
+    ```bash title="Check Apache / Dashboard service"
+    systemctl status apache2
+    # or
+    systemctl status httpd
+    ```
+    </CodeGroup>
+
+    ### Configure Session Storage
+
+    Dashboard session data is stored in the database, cache (memcached), or cookies. Set in `local_settings.py`:
+
+    <CodeGroup>
+    ```python title="/etc/openstack-dashboard/local_settings.py"
+    # Memcached session backend (recommended for production)
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+            'LOCATION': '<memcached-host>:11211',
+        }
+    }
+    ```
+    </CodeGroup>
+
+    ### Configure Branding
+
+    <CodeGroup>
+    ```python title="/etc/openstack-dashboard/local_settings.py"
+    SITE_BRANDING = "Xloud Dashboard"
+    ```
+    </CodeGroup>
+
+    ### Apply Changes
+
+    <CodeGroup>
+    ```bash title="Restart web server to apply config changes"
+    systemctl restart apache2
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Dashboard is Accessible">
+    Navigate to the Dashboard URL. The login page must load without SSL errors or timeouts.
+  </Step>
+  <Step title="Verify All Service Panels Load">
+    After login, navigate through Compute, Volumes, Network, and Object Store panels. Each panel must populate with resource data — empty panels with errors indicate a service endpoint problem.
+  </Step>
+  <Step title="Check Admin Hypervisor View">
+    As an admin user, navigate to **Admin → Compute → Hypervisors**. Confirm all compute nodes appear with **State: up**.
+  </Step>
+  <Step title="Test a Data Protection Workflow">
+    Create a test volume snapshot via the GUI and confirm it appears in **Project → Volumes → Snapshots** with status `available`.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Memcached for Session Storage">
+    File-based or database session storage does not scale across multiple Dashboard nodes. Deploy memcached and configure the Dashboard to use it for sessions. This enables horizontal scaling of the Dashboard service.
+  </Accordion>
+  <Accordion title="Restrict Admin Panel Access">
+    Only users with the `admin` role should have access to the Admin panels. Audit role assignments regularly — unintended admin access exposes platform-wide configuration to project-level users.
+  </Accordion>
+  <Accordion title="Enable HTTPS">
+    The Dashboard transmits credentials. Always serve it over HTTPS in production. Configure an SSL certificate on the Apache/nginx frontend and redirect HTTP to HTTPS.
+  </Accordion>
+</AccordionGroup>

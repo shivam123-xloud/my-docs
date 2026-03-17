@@ -1,0 +1,125 @@
+---
+title: "Capacity Expansion"
+description: "Add new compute nodes to the Xloud cluster to increase available vCPU, RAM, and storage capacity without disrupting running workloads."
+---
+
+## Overview
+
+Adding a compute node makes its resources available to the scheduler for new instance placements. The `nova-compute` service self-registers with the controller on startup — no manual database entries are required.
+
+---
+
+## Add a Compute Node
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Deploy and Configure the New Node">
+        Install and configure the `nova-compute` service on the new physical host via Xdeploy. Ensure the node can reach the controller, message broker (RabbitMQ), and shared storage (if applicable).
+      </Step>
+      <Step title="Verify Node Registration">
+        Navigate to **Admin → Compute → Hypervisors**.
+
+        The new host appears automatically once `nova-compute` registers with the controller. Confirm:
+        - **State**: up
+        - **Status**: enabled
+        - Resources (vCPUs, RAM, disk) reflect the physical host capacity
+      </Step>
+      <Step title="Assign to Host Aggregate (Optional)">
+        Navigate to **Admin → Compute → Host Aggregates**.
+
+        Select the appropriate aggregate and click **Manage Hosts** to add the new node. This ensures the scheduler routes flavors with matching extra specs to the new node.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Deploy the nova-compute Service">
+        Install and start `nova-compute` on the new host. The service self-registers with the controller on startup:
+
+        <CodeGroup>
+        ```bash title="On the new compute node — start nova-compute"
+        systemctl enable nova-compute
+        systemctl start nova-compute
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Verify Registration">
+        From the management node, confirm the new host appears:
+
+        <CodeGroup>
+        ```bash title="Confirm new host is registered"
+        openstack compute service list --service nova-compute
+        ```
+        </CodeGroup>
+
+        The new host must show `State: up` and `Status: enabled`. If it does not appear within two minutes, check `nova-compute` logs on the new host for connection or configuration errors.
+      </Step>
+
+      <Step title="Add to Host Aggregate">
+        <CodeGroup>
+        ```bash title="Add new node to an existing aggregate"
+        openstack aggregate add host <aggregate-name> <new-hostname>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Validate Scheduling to New Node">
+        Launch a test instance and confirm it lands on the new host:
+
+        <CodeGroup>
+        ```bash title="Force launch on specific host (admin)"
+        openstack server create \
+          --flavor m1.small \
+          --image ubuntu-24.04-amd64 \
+          --network <network-id> \
+          --availability-zone nova:<new-hostname> \
+          expansion-test
+        ```
+
+        ```bash title="Verify placement"
+        openstack server show expansion-test \
+          -c OS-EXT-SRV-ATTR:hypervisor_hostname -c status
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm New Node is Active">
+    <CodeGroup>
+    ```bash title="Check service state of new host"
+    openstack compute service list --service nova-compute
+    ```
+    </CodeGroup>
+
+    The new host must appear with `State: up` and `Status: enabled`.
+  </Step>
+  <Step title="Verify Capacity Increased">
+    <CodeGroup>
+    ```bash title="Show updated cluster capacity"
+    openstack hypervisor stats show
+    ```
+    </CodeGroup>
+
+    `vcpus`, `memory_mb`, and `local_gb` totals must reflect the addition of the new node's resources.
+  </Step>
+  <Step title="Confirm Instances Can Land on New Node">
+    After the test launch above, verify the reported hostname matches the new node:
+
+    <CodeGroup>
+    ```bash title="Check placement"
+    openstack server show expansion-test \
+      -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

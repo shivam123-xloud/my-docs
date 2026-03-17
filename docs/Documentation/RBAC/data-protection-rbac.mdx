@@ -1,0 +1,95 @@
+---
+title: "Data Protection Access"
+description: "Restrict backup and snapshot operations to authorized roles, preventing unauthorized resource consumption and accidental deletion."
+---
+
+## Overview
+
+Data protection operations — backups and volume snapshots — are restricted to roles that explicitly own or administer the resources being protected. This prevents unauthorized backup creation (which consumes storage quota) and prevents malicious or accidental snapshot deletion.
+
+---
+
+## Backup Policies
+
+| Operation | Policy Rule | Minimum Role | Notes |
+|---|---|---|---|
+| Create a server backup | `os_compute_api:os-create-backup` | `PROJECT_MEMBER_OR_ADMIN` | Creates an image from instance disk state |
+| Create volume snapshot (assisted) | `os_compute_api:os-assisted-volume-snapshots:create` | `SERVICE_OR_ADMIN` | Internal — triggered by Cinder, not end users |
+| Delete volume snapshot (assisted) | `os_compute_api:os-assisted-volume-snapshots:delete` | `SERVICE_OR_ADMIN` | Internal — triggered by Cinder, not end users |
+
+---
+
+## Instance Snapshot Policies
+
+| Operation | Policy Rule | Minimum Role |
+|---|---|---|
+| Create instance snapshot | `os_compute_api:servers:create_image` | `PROJECT_MEMBER_OR_ADMIN` |
+| Create instance snapshot (all tenants) | `os_compute_api:servers:create_image:allow_volume_backed` | `PROJECT_MEMBER_OR_ADMIN` |
+
+<Warning>
+  Assisted volume snapshot policies (`SERVICE_OR_ADMIN`) are designed for internal Cinder-to-Nova calls only. Do not assign these permissions to end users or project-level roles. Doing so exposes low-level storage operations that bypass standard Cinder workflow guards.
+</Warning>
+
+---
+
+## Role Matrix
+
+| Action | `reader` | `member` | `manager` | `admin` |
+|---|---|---|---|---|
+| View existing backups | Yes | Yes | Yes | Yes |
+| Create server backup | No | Yes | Yes | Yes |
+| Create instance snapshot | No | Yes | Yes | Yes |
+| Delete backups | No | Yes (own) | Yes | Yes |
+| Assisted volume snapshot (internal) | No | No | No | Yes |
+
+---
+
+## Custom Policy Override
+
+To restrict backup creation to `manager` and above — preventing standard members from creating backups that consume shared storage quota:
+
+<CodeGroup>
+```yaml title="/etc/nova/policy.yaml"
+"os_compute_api:os-create-backup": "rule:PROJECT_MANAGER_OR_ADMIN"
+"os_compute_api:servers:create_image": "rule:PROJECT_MANAGER_OR_ADMIN"
+```
+</CodeGroup>
+
+Validate and reload after editing:
+
+<CodeGroup>
+```bash title="Validate policy syntax"
+oslopolicy-validator --namespace nova --policy /etc/nova/policy.yaml
+```
+
+```bash title="Restart Nova API"
+systemctl restart nova-api
+```
+</CodeGroup>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Reader Cannot Create Backups">
+    As a `reader`-role user, attempt to create a backup — must be rejected:
+
+    <CodeGroup>
+    ```bash title="Test backup restriction"
+    openstack server backup create --name test-backup <instance-id>
+    # Expected: 403 Forbidden
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Member Can Create Snapshots">
+    As a `member`-role user, create an instance snapshot — must succeed:
+
+    <CodeGroup>
+    ```bash title="Create instance snapshot (member)"
+    openstack server image create --name test-snap <instance-id>
+    # Expected: snapshot created successfully
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

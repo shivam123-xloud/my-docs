@@ -1,0 +1,243 @@
+---
+title: "Node Evacuation"
+description: "Recover instances from a failed Xloud Compute node by evacuating them to healthy hosts while preserving instance identity and data."
+---
+
+## Overview
+
+Node evacuation is the process of recovering virtual machine instances from a compute node that has become unavailable due to hardware failure, kernel panic, or network partition. Xloud Compute rebuilds evacuated instances on healthy hosts, preserving their original configuration — including instance ID, name, IP addresses, and attached volumes.
+
+<Warning>
+  The failed source host **must be confirmed non-operational** before initiating evacuation. If the source host is still running, the same instance will exist on two hosts simultaneously, causing data corruption and network conflicts.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Single Instance Evacuation" icon="server">
+    Evacuate a specific instance to a chosen or scheduler-selected host. Suitable for targeted recovery.
+  </Card>
+  <Card title="Bulk Evacuation" icon="layer-group">
+    Evacuate all instances from a failed node in a single operation. Used for full host failure recovery.
+  </Card>
+</CardGroup>
+
+---
+
+## Concepts
+
+### What Evacuation Preserves
+
+| Attribute | Preserved |
+|---|---|
+| Instance ID | Yes |
+| Instance name | Yes |
+| IP addresses | Yes |
+| Attached volumes | Yes |
+| Security groups | Yes |
+| Ephemeral disk (shared storage) | Yes |
+| Ephemeral disk (local storage) | Rebuilt from original image |
+| Admin/user password | Regenerated unless explicitly provided |
+
+### Shared Storage Behavior
+
+From Nova API version **2.14** onwards, Xloud Compute automatically detects whether shared storage is in use. Explicit `--on-shared-storage` flags are no longer required — the system determines the correct evacuation path automatically.
+
+| Storage Type | Disk Behavior During Evacuation |
+|---|---|
+| Shared storage (NFS, Ceph) | Existing disk data preserved; instance re-attaches to existing files |
+| Local storage | Disk rebuilt from the original image; data since last snapshot is lost |
+
+<Info>
+  For production workloads with local ephemeral disks, ensure regular snapshots or use persistent Cinder volumes to minimize data loss exposure during unplanned host failure.
+</Info>
+
+---
+
+## Prerequisites
+
+- Source compute node must be **confirmed down** — power off or fence the node before proceeding
+- `nova-compute` service on the failed host must show as `down` in the service list
+- At least one healthy compute host with sufficient capacity to accommodate the evacuated instances
+- Administrative credentials with `admin` role in the Xloud project
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Confirm Host is Down">
+        Navigate to **Admin → Compute → Hypervisors**. The failed host should display **State: down**.
+      </Step>
+      <Step title="Navigate to Instances">
+        Go to **Admin → Compute → Instances**. Filter by host using the search field to list all instances on the failed node.
+      </Step>
+      <Step title="Evacuate Each Instance">
+        For each instance on the failed host, open the **Actions** dropdown and select **Evacuate**.
+
+        In the evacuation dialog:
+
+        | Field | Description |
+        |---|---|
+        | Destination Host | Leave blank for scheduler auto-selection, or specify a target host |
+        | On Shared Storage | Enable if instances use shared storage backend |
+      </Step>
+      <Step title="Monitor Recovery">
+        Instance status will cycle through `REBUILDING` → `ACTIVE`. Verify each instance reaches `ACTIVE` before closing the maintenance window.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Confirm the Host is Down
+
+    <CodeGroup>
+    ```bash title="List compute services and check host state"
+    openstack compute service list --host <failed-host> --service nova-compute
+    ```
+    </CodeGroup>
+
+    Proceed only if the host shows `State: down`.
+
+    ---
+
+    ### Step 2 — List Available Target Hosts
+
+    <CodeGroup>
+    ```bash title="List healthy compute hosts"
+    openstack host list
+    ```
+    </CodeGroup>
+
+    Identify hosts with `service: compute` and `zone` matching the failed host's availability zone.
+
+    ---
+
+    ### Step 3 — Evacuate
+
+    <Tabs>
+      <Tab title="Single Instance">
+        <CodeGroup>
+        ```bash title="Evacuate to a specific host"
+        openstack server evacuate --host <target-host> <instance-id>
+        ```
+
+        ```bash title="Evacuate — let scheduler choose host"
+        openstack server evacuate <instance-id>
+        ```
+        </CodeGroup>
+      </Tab>
+      <Tab title="Bulk (All Instances on Failed Host)">
+        <CodeGroup>
+        ```bash title="Evacuate all instances from failed host"
+        nova host-evacuate --target-host <target-host> <failed-host>
+        ```
+
+        ```bash title="Bulk evacuate — scheduler selects destinations"
+        nova host-evacuate <failed-host>
+        ```
+        </CodeGroup>
+
+        <Tip>
+          Use the `--strict` flag (Nova API 10.2.0+) to prevent accidental partial hostname matches when specifying the failed host:
+        </Tip>
+
+        <CodeGroup>
+        ```bash title="Strict hostname match"
+        nova host-evacuate --strict <failed-host.fqdn.example.com>
+        ```
+        </CodeGroup>
+      </Tab>
+    </Tabs>
+
+    ---
+
+    ### Step 4 — Monitor Evacuation Progress
+
+    <CodeGroup>
+    ```bash title="Watch instance status"
+    openstack server list --host <target-host> -c Name -c Status
+    ```
+    </CodeGroup>
+
+    Instances will transition: `REBUILDING` → `ACTIVE`.
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm All Instances Active">
+    <CodeGroup>
+    ```bash title="List instances that were on the failed host"
+    openstack server list --all-projects -c Name -c Status -c Host
+    ```
+    </CodeGroup>
+
+    Every evacuated instance must show `ACTIVE`. Instances stuck in `ERROR` require individual inspection.
+  </Step>
+  <Step title="Verify Instance Identity">
+    Confirm instance IDs, names, and IP addresses match pre-failure records:
+
+    <CodeGroup>
+    ```bash title="Show instance details"
+    openstack server show <instance-id> -c id -c name -c addresses -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Check Dependent Service Cleanup">
+    Evacuation can leave stale state in network, storage, and image services. Verify:
+
+    - **Networking:** Ports are associated with the new host — `openstack port list --server <instance-id>`
+    - **Volumes:** Attachments show correct host — `openstack volume attachment list`
+    - **Floating IPs:** Still associated with the instance
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Shared or Volume-Backed Storage">
+    Local ephemeral storage cannot survive a host hardware failure — data is lost and the instance is rebuilt from its original image. Design production workloads to use Ceph-backed ephemeral disks (shared storage) or persistent Cinder volumes to make evacuation lossless.
+  </Accordion>
+  <Accordion title="Pre-fence Failed Hosts">
+    Before bulk evacuation, physically power off or fence the failed host via IPMI/BMC. This prevents a partially recovered host from coming back online mid-evacuation and causing split-brain instance states.
+  </Accordion>
+  <Accordion title="Disable the Failed Host Post-Evacuation">
+    After recovery, disable the evacuated host in Xloud Compute to prevent new instances from being scheduled to it before it is formally re-commissioned:
+
+    <CodeGroup>
+    ```bash title="Disable failed host"
+    openstack compute service set --disable --disable-reason "hardware failure - under investigation" <failed-host> nova-compute
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Evacuation fails immediately">
+    **Cause:** The source host is still detected as operational by Nova.
+
+    **Resolution:** Confirm the host is truly down. Check `openstack compute service list` — the host must show `State: down`. If the host is still reachable, shut it down completely before re-attempting evacuation.
+  </Accordion>
+  <Accordion title="Instance stuck in REBUILDING">
+    **Cause:** The target host cannot access shared storage, or a dependent service (Neutron, Cinder) has stale locks.
+
+    **Resolution:** Check `nova-compute` logs on the target host. Verify shared storage mounts are healthy. Release any Cinder volume locks left by the failed host before retrying.
+  </Accordion>
+  <Accordion title="IP address conflict after evacuation">
+    **Cause:** The failed host partially recovered and the original instance is still running, conflicting with the evacuated copy.
+
+    **Resolution:** Immediately shut down the original host. Delete the stale instance record if it persists in Nova's database, then re-associate the network port with the evacuated instance.
+  </Accordion>
+</AccordionGroup>

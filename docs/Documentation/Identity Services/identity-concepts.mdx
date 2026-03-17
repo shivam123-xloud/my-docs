@@ -1,0 +1,552 @@
+---
+title: "Identity & Access Management"
+description: "Understand and configure the Xloud Identity Service — managing users, groups, projects, domains, roles, tokens, and service endpoints across the platform."
+---
+
+## Overview
+
+The Xloud Identity Service is the central authentication and authorization component of the Xloud platform. Every API request across Compute, Storage, Networking, and Image services is validated through the Identity Service before execution.
+
+It performs three primary functions:
+
+<CardGroup cols={3}>
+  <Card title="Authentication" icon="key">
+    Validates user credentials and issues time-limited tokens that represent an authenticated session scoped to a project or domain.
+  </Card>
+  <Card title="Authorization" icon="shield-check">
+    Determines what actions an authenticated identity is permitted to perform via role assignments and policy enforcement.
+  </Card>
+  <Card title="Service Catalog" icon="list">
+    Maintains a registry of all Xloud services and their API endpoints, enabling clients to discover and connect to the correct service URLs.
+  </Card>
+</CardGroup>
+
+---
+
+## Core Concepts
+
+### Identity Hierarchy
+
+```
+Domain
+  ├── Users
+  ├── Groups
+  │     └── Users (members)
+  └── Projects
+        └── Role Assignments (User → Role, Group → Role)
+```
+
+### Entity Reference
+
+| Entity | Description | Scope |
+|---|---|---|
+| **Domain** | Administrative boundary grouping projects, users, and groups. Domain admins manage resources within their domain only. | Platform-wide |
+| **Project** | Container for cloud resources (instances, volumes, networks). Maps to a customer account or team workspace. | Within a domain |
+| **User** | A digital identity representing a person, service, or system that interacts with Xloud APIs. | Domain-scoped |
+| **Group** | A collection of users within a domain. Role assignments to a group propagate to all group members. | Domain-scoped |
+| **Role** | A named set of permissions. Roles are assigned to users or groups on a project or domain, and are included in the token. | Assigned per project/domain |
+| **Token** | An alphanumeric credential issued after successful authentication. Scoped to a project or domain, with a finite validity period. | Session-scoped |
+| **Credential** | Authentication material — username/password, API key, or existing token — used to obtain a new token. | Per user |
+| **Endpoint** | A network-accessible URL through which a specific Xloud service API is accessed. | Per service/region |
+| **Service** | A registered Xloud platform component (Compute, Storage, Image, etc.) that exposes one or more endpoints. | Platform-wide |
+| **Region** | A logical division of the Xloud deployment, often representing a data center or geographic location. Supports sub-regions. | Platform-wide |
+
+<Info>
+  Groups simplify large-scale role management. Assigning a role to a group rather than individual users means adding a user to the group automatically grants them the appropriate permissions — no per-user role assignment required.
+</Info>
+
+---
+
+## Token Types
+
+| Type | Description | Persistence | Recommended Use |
+|---|---|---|---|
+| **Fernet** | Encrypted, self-contained token. Not stored in the database. Validated by decrypting with Fernet keys. | Stateless | Production — default recommended |
+| **UUID** | Simple 32-character token stored in the database. Requires database lookup on every validation call. | Stateful (DB) | Legacy — not recommended for new deployments |
+
+<Warning>
+  UUID tokens require the Identity Service database to be available for every token validation across all services. At scale this creates a bottleneck. Fernet tokens validate without database access and are strongly preferred.
+</Warning>
+
+---
+
+## Policy Management
+
+Service access is controlled by policy files at `/etc/[SERVICE]/policy.yaml`. The default policy recognizes the `admin` role for privileged operations. Custom roles require explicit policy rule modifications.
+
+Example policy rule:
+
+```yaml
+# Allow users with 'compute-user' role to create volumes
+"volume:create": "role:compute-user"
+```
+
+<Note>
+  Policy changes take effect without service restart in most configurations — the policy file is re-read per request. Validate policy changes in a staging environment before applying to production.
+</Note>
+
+---
+
+## Prerequisites
+
+- Xloud Identity Service (`keystone`) installed and running
+- Database backend configured (MySQL/MariaDB or PostgreSQL)
+- Admin credentials available (`OS_USERNAME`, `OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_AUTH_URL`)
+- For LDAP integration: network access to the LDAP/AD server and read-only service account credentials
+- For Fernet tokens: `keystone-manage fernet_setup` completed and keys distributed to all API nodes
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Domain">
+        Navigate to **Admin → Identity → Domains → Create Domain**.
+
+        | Field | Description |
+        |---|---|
+        | Name | Unique domain name (e.g., `engineering`, `customers`) |
+        | Description | Optional — purpose of the domain |
+        | Enabled | Must be checked for the domain to be active |
+      </Step>
+
+      <Step title="Create a Project">
+        Navigate to **Admin → Identity → Projects → Create Project**.
+
+        | Field | Description |
+        |---|---|
+        | Name | Project name |
+        | Domain | Select the parent domain |
+        | Description | Optional |
+        | Enabled | Must be checked |
+      </Step>
+
+      <Step title="Create a User">
+        Navigate to **Admin → Identity → Users → Create User**.
+
+        | Field | Description |
+        |---|---|
+        | Username | Login name |
+        | Domain | Parent domain |
+        | Email | Optional |
+        | Password | Initial password |
+        | Primary Project | Default project for this user |
+        | Enabled | Must be checked |
+      </Step>
+
+      <Step title="Assign Roles">
+        Open a **Project** → **Manage Members** tab.
+
+        Add users or groups and assign roles:
+
+        | Role | Typical Permissions |
+        |---|---|
+        | `admin` | Full platform access within scope |
+        | `member` | Standard resource create/manage access |
+        | `reader` | Read-only access to project resources |
+
+        Click **Save** to apply.
+      </Step>
+
+      <Step title="Create a Group and Add Members">
+        Navigate to **Admin → Identity → Groups → Create Group**.
+
+        After creation, open the group and click **Add Users** to assign members. Role assignments made to the group propagate to all members immediately.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Domain, Project & User Management
+
+    <Steps>
+      <Step title="Create a Domain">
+        <CodeGroup>
+        ```bash title="Create domain"
+        openstack domain create \
+          --description "Engineering team domain" \
+          engineering
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Create a Project">
+        <CodeGroup>
+        ```bash title="Create project within a domain"
+        openstack project create \
+          --domain engineering \
+          --description "Backend services team" \
+          backend-team
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Create a User">
+        <CodeGroup>
+        ```bash title="Create user"
+        openstack user create \
+          --domain engineering \
+          --password-prompt \
+          --email john.doe@example.com \
+          john.doe
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Create a Group">
+        <CodeGroup>
+        ```bash title="Create group"
+        openstack group create \
+          --domain engineering \
+          --description "Backend engineers" \
+          backend-engineers
+        ```
+
+        ```bash title="Add user to group"
+        openstack group add user backend-engineers john.doe
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Assign Roles">
+        <CodeGroup>
+        ```bash title="Assign role to user on a project"
+        openstack role add \
+          --project backend-team \
+          --user john.doe \
+          member
+        ```
+
+        ```bash title="Assign role to group on a project"
+        openstack role add \
+          --project backend-team \
+          --group backend-engineers \
+          member
+        ```
+
+        ```bash title="Assign domain-level admin role"
+        openstack role add \
+          --domain engineering \
+          --user john.doe \
+          admin
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Manage Tokens">
+        <CodeGroup>
+        ```bash title="Issue a project-scoped token"
+        openstack token issue \
+          --os-project-name backend-team \
+          --os-user-domain-name engineering
+        ```
+
+        ```bash title="Revoke a token"
+        openstack token revoke <token-id>
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Fernet Token Configuration
+
+    <CodeGroup>
+    ```bash title="Initialize Fernet key repository"
+    keystone-manage fernet_setup \
+      --keystone-user keystone \
+      --keystone-group keystone
+    ```
+
+    ```bash title="Rotate Fernet keys (run on schedule)"
+    keystone-manage fernet_rotate \
+      --keystone-user keystone \
+      --keystone-group keystone
+    ```
+    </CodeGroup>
+
+    Configure the token provider in `keystone.conf`:
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf"
+    [token]
+    provider = fernet
+    expiration = 3600
+
+    [fernet_tokens]
+    max_active_keys = 3
+    key_repository = /etc/keystone/fernet-keys/
+    ```
+    </CodeGroup>
+
+    <Tip>
+      `max_active_keys = 3` retains one primary key (for new tokens), one secondary key (for validating recently issued tokens), and one staged key (rotated in next cycle). Increase only if token expiration exceeds the rotation interval.
+    </Tip>
+
+    ---
+
+    ### LDAP Integration
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf — LDAP backend"
+    [identity]
+    driver = ldap
+
+    [ldap]
+    url = ldaps://ldap.example.com
+    user = cn=keystone,ou=services,dc=example,dc=com
+    password = <service-account-password>
+    suffix = dc=example,dc=com
+    use_tls = True
+    tls_cacertfile = /etc/ssl/certs/ca-bundle.pem
+    tls_req_cert = demand
+
+    user_tree_dn = ou=Users,dc=example,dc=com
+    user_objectclass = inetOrgPerson
+    user_id_attribute = uid
+    user_name_attribute = uid
+    user_mail_attribute = mail
+
+    group_tree_dn = ou=Groups,dc=example,dc=com
+    group_objectclass = groupOfNames
+    group_id_attribute = cn
+    group_name_attribute = cn
+    group_member_attribute = member
+    ```
+    </CodeGroup>
+
+    <Warning>
+      Xloud Identity Service LDAP integration is **read-only** for user and group data. Project and role assignments are always managed in the SQL backend. Do not configure LDAP for assignments.
+    </Warning>
+
+    For SELinux hosts, enable LDAP network access:
+
+    <CodeGroup>
+    ```bash title="Enable LDAP for SELinux"
+    setsebool -P authlogin_nsswitch_use_ldap on
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Domain-Specific Backends
+
+    Configure different identity backends (LDAP vs SQL) per domain:
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf"
+    [identity]
+    domain_specific_drivers_enabled = True
+    domain_config_dir = /etc/keystone/domains
+    ```
+    </CodeGroup>
+
+    Create a per-domain config file:
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/domains/keystone.engineering.conf"
+    [identity]
+    driver = ldap
+
+    [ldap]
+    url = ldaps://ldap.engineering.example.com
+    ...
+    ```
+    </CodeGroup>
+
+    Or store domain configs in the database (recommended for dynamic environments):
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf"
+    [identity]
+    domain_configurations_from_database = True
+    ```
+
+    ```bash title="Upload file-based config to database"
+    keystone-manage domain_config_upload --all
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Caching
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf — Memcached cache"
+    [cache]
+    enabled = true
+    backend = dogpile.cache.pymemcache
+    backend_argument = url:<memcached-host>:11211
+
+    [token]
+    caching = true
+    cache_time = 300
+
+    [revoke]
+    cache_time = 3600
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Security Compliance (PCI-DSS)
+
+    <CodeGroup>
+    ```ini title="/etc/keystone/keystone.conf — security_compliance"
+    [security_compliance]
+    lockout_failure_attempts = 5
+    lockout_duration = 1800
+    disable_user_account_days_inactive = 90
+    change_password_upon_first_use = True
+    password_expires_days = 90
+    password_regex = ^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%]).{12,}$
+    password_regex_description = Minimum 12 characters with uppercase, lowercase, digit, and special character
+    unique_last_password_count = 5
+    minimum_password_age = 1
+    ```
+    </CodeGroup>
+
+    | Parameter | Description |
+    |---|---|
+    | `lockout_failure_attempts` | Failed attempts before account lock |
+    | `lockout_duration` | Lock duration in seconds (0 = permanent until admin unlock) |
+    | `disable_user_account_days_inactive` | Auto-disable accounts inactive beyond this threshold |
+    | `change_password_upon_first_use` | Force password change on first login |
+    | `password_expires_days` | Days until password expiry |
+    | `unique_last_password_count` | Number of previous passwords that cannot be reused |
+    | `minimum_password_age` | Minimum days before password can be changed again |
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Identity Service is Running">
+    <CodeGroup>
+    ```bash title="Check keystone endpoints"
+    openstack endpoint list --service identity
+    ```
+    </CodeGroup>
+
+    Both `public` and `internal` endpoints must be present and pointing to the correct URLs.
+  </Step>
+  <Step title="Test Token Issuance">
+    <CodeGroup>
+    ```bash title="Issue and inspect a token"
+    openstack token issue
+    ```
+    </CodeGroup>
+
+    A valid response includes `id`, `expires`, `project`, and `user` fields.
+  </Step>
+  <Step title="Confirm Role Assignments">
+    <CodeGroup>
+    ```bash title="List role assignments for a project"
+    openstack role assignment list --project <project-name> --names
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Validate LDAP Connectivity (if configured)">
+    <CodeGroup>
+    ```bash title="Test LDAP user listing"
+    openstack user list --domain <ldap-domain>
+    ```
+    </CodeGroup>
+
+    Users from the LDAP directory should appear in the output. An empty list or error indicates LDAP connectivity or search parameter issues.
+  </Step>
+  <Step title="Test Fernet Key Rotation">
+    <CodeGroup>
+    ```bash title="Rotate keys and issue a new token"
+    keystone-manage fernet_rotate --keystone-user keystone --keystone-group keystone
+    openstack token issue
+    ```
+    </CodeGroup>
+
+    Token issuance must succeed after rotation — confirming old tokens remain valid with the secondary key.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Fernet Tokens in Production">
+    Always configure `provider = fernet` in production deployments. Fernet tokens are stateless — no database lookup is required per validation — dramatically reducing Identity Service load at scale. Rotate keys on a schedule shorter than the token expiration period.
+  </Accordion>
+  <Accordion title="Manage Permissions via Groups">
+    Assign roles to groups, not individual users. This ensures consistent permissions, reduces administrative overhead, and eliminates the risk of orphaned role assignments when users leave teams. Apply the principle of least privilege — assign the minimum role required.
+  </Accordion>
+  <Accordion title="Isolate Tenants with Domains">
+    Use separate domains for distinct organizational units, external customers, or federated identity providers. Domain-level isolation prevents cross-tenant user and project name conflicts, and enables domain-specific LDAP backends.
+  </Accordion>
+  <Accordion title="Enable Security Compliance for Regulated Environments">
+    For PCI-DSS, ISO 27001, or SOC 2 compliance, configure all `[security_compliance]` parameters. Document the `password_regex_description` clearly — it is surfaced to users when their password is rejected, reducing support tickets.
+  </Accordion>
+  <Accordion title="Cache Token Validation">
+    Configure memcached caching for token validation in all consuming services (`nova`, `cinder`, `neutron`). Without caching, every API request triggers a synchronous token validation call to the Identity Service, creating a hard dependency and single point of failure.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Token validation fails across services">
+    **Cause:** Fernet keys are not synchronized across all Identity Service nodes, or the key rotation interval is shorter than the token expiration period.
+
+    **Resolution:** Distribute `/etc/keystone/fernet-keys/` identically to all nodes. Ensure the rotation schedule retains at least one secondary key covering the full token lifetime:
+
+    <CodeGroup>
+    ```bash title="Verify key repository"
+    ls -la /etc/keystone/fernet-keys/
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="LDAP users not appearing">
+    **Cause:** Incorrect `user_tree_dn`, `user_objectclass`, or `user_id_attribute` in `keystone.conf`.
+
+    **Resolution:** Test LDAP connectivity and search parameters directly:
+
+    <CodeGroup>
+    ```bash title="Test LDAP search"
+    ldapsearch -H ldaps://ldap.example.com \
+      -D "cn=keystone,ou=services,dc=example,dc=com" \
+      -w <password> \
+      -b "ou=Users,dc=example,dc=com" \
+      "(objectClass=inetOrgPerson)" uid mail
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="User locked out after failed logins">
+    **Cause:** `lockout_failure_attempts` threshold reached with `security_compliance` enabled.
+
+    **Resolution:** Admin unlock the account:
+
+    <CodeGroup>
+    ```bash title="Re-enable locked user"
+    openstack user set --enable <user-id>
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="'You are not authorized' despite role assignment">
+    **Cause:** The token was issued before the role assignment. The role is not reflected in the current token.
+
+    **Resolution:** Re-issue the token after role assignment:
+
+    <CodeGroup>
+    ```bash title="Re-authenticate to get updated token"
+    openstack token issue
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,135 @@
+---
+title: "Security Configuration"
+description: "Create and manage SSH key pairs and security groups to control access to your Xloud instances."
+---
+
+## Key Pairs
+
+Key pairs provide SSH access to instances. The public key is injected into launched instances via cloud-init; the private key is retained locally for SSH authentication.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Navigate to Key Pairs">
+        Go to **Project → Compute → Key Pairs**.
+      </Step>
+      <Step title="Create or Import a Key Pair">
+        <Tabs>
+          <Tab title="Create New">
+            Click **Create Key Pair**.
+
+            | Field | Description |
+            |---|---|
+            | Key Pair Name | Unique name (e.g., `john-doe-laptop`) |
+            | Key Type | `SSH Key` for Linux instances; `x509` for Windows |
+
+            Click **Create Key Pair**. The private key file (`.pem`) downloads automatically — **save it immediately**. It cannot be downloaded again.
+
+            <Warning>
+              The private key is shown only once at creation. If lost, delete the key pair and create a new one. Any instances already using the old key pair will require console-based access recovery.
+            </Warning>
+          </Tab>
+          <Tab title="Import Existing">
+            Click **Import Public Key**.
+
+            | Field | Description |
+            |---|---|
+            | Key Pair Name | Name to identify this key pair in Xloud |
+            | Key Type | `SSH Key` |
+            | Public Key | Paste the contents of your existing `~/.ssh/id_rsa.pub` or equivalent |
+
+            Click **Import Public Key**.
+          </Tab>
+        </Tabs>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create a new key pair"
+    openstack keypair create my-keypair > my-keypair.pem
+    chmod 400 my-keypair.pem
+    ```
+
+    ```bash title="Import an existing public key"
+    openstack keypair create \
+      --public-key ~/.ssh/id_rsa.pub \
+      my-keypair
+    ```
+
+    ```bash title="List key pairs"
+    openstack keypair list
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Security Groups
+
+Security groups are virtual firewalls applied to instances. Every instance must belong to at least one security group. Rules control inbound and outbound traffic at the port and protocol level.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Navigate to Security Groups">
+        Go to **Project → Network → Security Groups**.
+      </Step>
+      <Step title="Create a Security Group">
+        Click **Create Security Group**. Provide a name (e.g., `web-servers`) and an optional description.
+      </Step>
+      <Step title="Add Rules">
+        Open the security group and click **Add Rule**.
+
+        | Field | Description |
+        |---|---|
+        | Rule | Select from common presets (SSH, HTTP, HTTPS, RDP) or set Custom TCP/UDP/ICMP |
+        | Direction | Ingress (inbound) or Egress (outbound) |
+        | Open Port | Single port, port range, or all ports |
+        | Remote | CIDR (IP range) or another security group |
+
+        Common rules for a web server:
+
+        | Rule | Port | Remote | Purpose |
+        |---|---|---|---|
+        | Custom TCP | 22 | Your IP (`x.x.x.x/32`) | SSH access |
+        | HTTP | 80 | `0.0.0.0/0` | Public web traffic |
+        | HTTPS | 443 | `0.0.0.0/0` | Public HTTPS traffic |
+        | All ICMP | — | `0.0.0.0/0` | Ping/diagnostics |
+
+        <Warning>
+          Avoid setting SSH (port 22) remote to `0.0.0.0/0` in production. Restrict SSH access to known IP ranges to reduce brute-force exposure.
+        </Warning>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Create security group"
+    openstack security group create web-servers \
+      --description "Rules for public web tier"
+    ```
+
+    ```bash title="Add SSH rule (restricted to your IP)"
+    openstack security group rule create \
+      --protocol tcp \
+      --dst-port 22 \
+      --remote-ip <your-ip>/32 \
+      web-servers
+    ```
+
+    ```bash title="Add HTTP and HTTPS rules"
+    openstack security group rule create --protocol tcp --dst-port 80 --remote-ip 0.0.0.0/0 web-servers
+    openstack security group rule create --protocol tcp --dst-port 443 --remote-ip 0.0.0.0/0 web-servers
+    ```
+
+    ```bash title="Add ICMP (ping)"
+    openstack security group rule create \
+      --protocol icmp \
+      --remote-ip 0.0.0.0/0 \
+      web-servers
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>

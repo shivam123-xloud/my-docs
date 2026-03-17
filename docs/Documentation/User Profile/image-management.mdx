@@ -1,0 +1,95 @@
+---
+title: "Image Management"
+description: "View, upload, update, and delete virtual machine images from the Xloud dashboard."
+---
+
+## Overview
+
+Images are the bootable templates used to launch instances. Administrators publish platform-wide public images; project users can upload private images visible only within their project.
+
+---
+
+## View, Upload, and Manage Images
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="View Available Images">
+        Navigate to **Project → Compute → Images**. Images shared publicly by administrators appear alongside images you have uploaded privately.
+      </Step>
+      <Step title="Upload an Image">
+        Click **Create Image**.
+
+        | Field | Description |
+        |---|---|
+        | Image Name | Descriptive name (e.g., `ubuntu-24.04-amd64`) |
+        | Image Description | Optional context |
+        | Image Source | File (upload from local machine) or URL (direct HTTP fetch) |
+        | Format | `QCOW2` for standard images; match the format of the file being uploaded |
+        | Architecture | `x86_64` for standard cloud images |
+        | Minimum Disk (GB) | Minimum root disk size required to boot this image |
+        | Minimum RAM (MB) | Minimum RAM required to boot this image |
+        | Visibility | Private (current project only) or Public (platform-wide, admin only) |
+        | Protected | Enable to prevent accidental deletion |
+
+        Click **Create Image** and wait for status to reach **Active**.
+      </Step>
+      <Step title="Update or Delete an Image">
+        In the image list, use the **Actions** dropdown to **Edit Image** (update name, visibility, or protection) or **Delete Image**.
+
+        <Note>
+          Protected images cannot be deleted until protection is disabled. Open **Edit Image** and uncheck **Protected** before deleting.
+        </Note>
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    <CodeGroup>
+    ```bash title="Upload an image"
+    openstack image create \
+      --disk-format qcow2 \
+      --container-format bare \
+      --file noble-server-cloudimg-amd64.img \
+      --public \
+      "ubuntu-24.04-amd64"
+    ```
+
+    ```bash title="List images"
+    openstack image list
+    ```
+
+    ```bash title="Delete an image"
+    openstack image delete <image-id>
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Image Status is Active">
+    <CodeGroup>
+    ```bash title="Check image status"
+    openstack image show <image-name> -c status -c disk_format -c size
+    ```
+    </CodeGroup>
+
+    `status` must be `active` before the image can be used to launch instances.
+  </Step>
+  <Step title="Launch a Test Instance from the Image">
+    <CodeGroup>
+    ```bash title="Boot from uploaded image"
+    openstack server create \
+      --flavor m1.small \
+      --image <image-name> \
+      --network <network-id> \
+      image-test
+    ```
+    </CodeGroup>
+
+    Confirm the instance reaches `ACTIVE` status.
+  </Step>
+</Steps>

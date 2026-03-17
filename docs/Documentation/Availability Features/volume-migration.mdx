@@ -1,0 +1,295 @@
+---
+title: "Volume Migration"
+description: "Migrate Xloud Block Storage volumes between backends to support storage rebalancing, hardware decommissioning, and performance optimization."
+---
+
+## Overview
+
+Xloud Block Storage supports migrating volumes between storage backends within the same volume type. Volume migration is used for storage hardware decommissioning, backend rebalancing, and moving volumes to higher-performance or lower-cost tiers without disrupting the instances using them.
+
+<CardGroup cols={3}>
+  <Card title="Storage-Native Migration" icon="bolt">
+    The storage backend performs migration using its own optimized internal mechanism — fastest and most efficient when supported.
+  </Card>
+  <Card title="Unattached Volume Migration" icon="hard-drive">
+    A new volume is created on the target backend and data is transferred by the Block Storage service. The source volume is deleted on completion.
+  </Card>
+  <Card title="Attached Volume Migration" icon="plug">
+    For volumes actively mounted to instances. Xloud Compute copies data to the new volume while it remains in use, then performs a transparent swap.
+  </Card>
+</CardGroup>
+
+---
+
+## Migration Paths
+
+Xloud Block Storage selects the appropriate migration method automatically based on backend capability and volume state:
+
+| Scenario | Method Used | Notes |
+|---|---|---|
+| Backend supports native migration | Storage-native | Backend handles data movement; fastest |
+| Volume unattached, backend has no native support | Block Storage service copy | Creates new volume, transfers data, deletes source |
+| Volume attached to a running instance | Compute-assisted copy | libvirt driver copies data; instance remains running |
+
+<Info>
+  Not all storage backends support unattached volume migration. Consult the backend driver documentation to confirm support before planning a migration.
+</Info>
+
+<Warning>
+  Volumes with active snapshots **cannot be migrated**. Remove or delete all snapshots before initiating migration.
+</Warning>
+
+---
+
+## Prerequisites
+
+- Administrative credentials with `admin` role
+- Source and destination backends must support the **same volume type**
+- Target backend must have sufficient free capacity
+- Volume must have **no snapshots**
+- For attached volume migration: Xloud Compute must be using the **libvirt driver**
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Info>
+      Volume migration is an administrative operation. It is accessible only from the **Admin** panel of the Xloud dashboard — not from the project-level volume view.
+    </Info>
+
+    <Steps>
+      <Step title="Navigate to Admin Volumes">
+        Go to **Admin → Volume → Volumes**.
+      </Step>
+      <Step title="Locate the Volume">
+        Find the volume to migrate. Confirm it has no snapshots and is in `available` or `in-use` status.
+      </Step>
+      <Step title="Initiate Migration">
+        Open the **Actions** dropdown for the volume and select **Migrate Volume**.
+      </Step>
+      <Step title="Select Destination Backend">
+        In the migration dialog:
+
+        | Field | Description |
+        |---|---|
+        | Destination Host | Select the target storage backend from the dropdown |
+        | Force Host Copy | Enable to bypass backend-native migration and force a host-level copy |
+        | Lock Volume | Volume will be locked to prevent other operations during migration |
+      </Step>
+      <Step title="Monitor Migration">
+        The volume status changes to `migrating`. Return to the volume list and refresh until status returns to `available` or `in-use`, confirming migration completion.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — List Available Backends
+
+    <CodeGroup>
+    ```bash title="List storage backends (pools)"
+    openstack volume backend pool list --detail
+    ```
+
+    ```bash title="Alternative: list all hosts"
+    cinder get-pools
+    ```
+    </CodeGroup>
+
+    Note the full backend host string (format: `hostname@backend-name#pool-name`) for the target.
+
+    ---
+
+    ### Step 2 — Confirm Volume is Eligible
+
+    <CodeGroup>
+    ```bash title="Check volume status and snapshot count"
+    openstack volume show <volume-id> -c status -c migration_status -c snapshot_id
+    ```
+    </CodeGroup>
+
+    Proceed only if:
+    - `status`: `available` or `in-use`
+    - `migration_status`: `None` (no migration in progress)
+    - `snapshot_id`: `None` (no snapshots)
+
+    ---
+
+    ### Step 3 — Initiate Migration
+
+    <CodeGroup>
+    ```bash title="Migrate unattached volume"
+    openstack volume migrate <volume-id> --host <target-backend-host>
+    ```
+
+    ```bash title="Force host-level copy (bypass backend-native migration)"
+    openstack volume migrate <volume-id> --host <target-backend-host> --force-host-copy
+    ```
+    </CodeGroup>
+
+    `--force-host-copy` skips backend-native migration and forces the Block Storage service to perform the data copy directly. Use this when testing migration paths or when backend-native migration is known to be problematic.
+
+    ---
+
+    ### Step 4 — Monitor Progress
+
+    <CodeGroup>
+    ```bash title="Poll migration status"
+    openstack volume show <volume-id> -c status -c migration_status -c os-vol-host-attr:host
+    ```
+    </CodeGroup>
+
+    | `migration_status` value | Meaning |
+    |---|---|
+    | `None` | No migration active |
+    | `migrating` | Data transfer in progress |
+    | `completing` | Finalizing — swapping identifiers and cleaning up source |
+    | `success` | Migration complete |
+    | `error` | Migration failed — check logs |
+
+    ---
+
+    ### Step 5 — Decommission Source Backend (If Applicable)
+
+    After all volumes have been migrated off a backend:
+
+    <CodeGroup>
+    ```bash title="Stop the cinder-volume service on decommissioned host"
+    systemctl stop cinder-volume
+    systemctl disable cinder-volume
+    ```
+    </CodeGroup>
+
+    <Warning>
+      Stop the `cinder-volume` service on the decommissioned host **before** removing it from the configuration. An active service on a decommissioned backend will attempt to schedule new volumes there.
+    </Warning>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Key Volume Attributes During Migration
+
+These fields on the volume object track migration state and should be monitored throughout the process:
+
+| Attribute | Description |
+|---|---|
+| `os-vol-host-attr:host` | Current backend location of the volume |
+| `os-vol-mig-status-attr:migstat` | Current migration status (`None` = idle) |
+| `os-vol-mig-status-attr:name_id` | Volume ID used for naming on the backend (may differ post-migration) |
+| `status` | Overall volume status — locked to `migrating` during transfer |
+
+<Note>
+  Migration status attributes (`os-vol-mig-status-attr:*`) are only visible to administrators. Non-admin users see only the `status` field.
+</Note>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Migration Status is Clear">
+    <CodeGroup>
+    ```bash title="Verify migration completed"
+    openstack volume show <volume-id> -c status -c migration_status -c os-vol-host-attr:host
+    ```
+    </CodeGroup>
+
+    Expected result:
+    - `status`: `available` (or `in-use` if attached)
+    - `migration_status`: `success` or `None`
+    - `os-vol-host-attr:host`: reflects the **target** backend
+  </Step>
+  <Step title="Verify Volume is Accessible">
+    For attached volumes, confirm the instance can still read/write data normally after migration completes. Run a filesystem check or application-level read/write test from within the instance.
+  </Step>
+  <Step title="Check Source Backend is Empty">
+    After a decommissioning migration, verify no volumes remain on the old backend:
+
+    <CodeGroup>
+    ```bash title="List volumes on old backend"
+    openstack volume list --all-projects -c ID -c Name -c Host | grep <old-backend-name>
+    ```
+    </CodeGroup>
+
+    No results confirms the backend is empty and safe to decommission.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Remove Snapshots Before Migration">
+    Volumes with snapshots cannot be migrated. Schedule snapshot cleanup as part of any migration plan. If snapshots must be preserved, create a new volume from the snapshot, migrate the new volume, and reattach.
+  </Accordion>
+  <Accordion title="Migrate During Low-Traffic Periods">
+    Attached volume migration uses Compute to copy data while the volume is in use. This generates significant I/O on both the source and destination backends, as well as on the compute host. Schedule migrations during low-traffic windows to minimize impact on running workloads.
+  </Accordion>
+  <Accordion title="Backend-Native Migration Preferred">
+    Where available, backend-native migration (e.g., array-level copy) is significantly faster and does not consume Xloud Compute or network resources. Avoid `--force-host-copy` unless backend-native migration has a known issue or is unsupported.
+  </Accordion>
+  <Accordion title="Validate Backend Capacity Before Migration">
+    Confirm the target backend has sufficient free space before initiating migration. A migration that runs out of space mid-transfer will fail and may leave the volume in an `error` state requiring manual recovery.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Migration fails with 'volume has snapshots'">
+    **Cause:** The volume has one or more snapshots, which are not compatible with the migration process.
+
+    **Resolution:** Delete all snapshots associated with the volume, then retry:
+
+    <CodeGroup>
+    ```bash title="List and delete snapshots"
+    openstack snapshot list --volume <volume-id>
+    openstack snapshot delete <snapshot-id>
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Migration status stuck at 'migrating'">
+    **Cause:** The `cinder-volume` service on either the source or destination host has stalled, or there is a network/storage connectivity issue between backends.
+
+    **Resolution:** Check `cinder-volume` logs on both hosts:
+
+    <CodeGroup>
+    ```bash title="Check cinder-volume logs"
+    journalctl -u cinder-volume -n 200 --no-pager
+    ```
+    </CodeGroup>
+
+    If the service is unresponsive, restart it — the migration will resume from where it left off if the backend supports checkpointing, or restart from the beginning.
+  </Accordion>
+  <Accordion title="Volume stuck in 'error' state post-migration">
+    **Cause:** Migration failed mid-transfer, leaving the volume in an inconsistent state.
+
+    **Resolution:** Reset the volume state and retry:
+
+    <CodeGroup>
+    ```bash title="Reset volume state"
+    openstack volume set --state available <volume-id>
+    ```
+    </CodeGroup>
+
+    Verify backend connectivity and capacity before retrying the migration.
+  </Accordion>
+  <Accordion title="New volumes still scheduling to decommissioned backend">
+    **Cause:** The `cinder-volume` service was not stopped on the decommissioned host.
+
+    **Resolution:** Stop and disable the service on the old host:
+
+    <CodeGroup>
+    ```bash title="Disable cinder-volume on old host"
+    systemctl stop cinder-volume && systemctl disable cinder-volume
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

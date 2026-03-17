@@ -1,0 +1,289 @@
+---
+title: "Object Storage"
+description: "Store, replicate, and retrieve unstructured data at scale using the Xloud Object Storage service — a distributed, highly available blob store for backups, archives, and static assets."
+---
+
+## Overview
+
+The Xloud Object Storage service provides a distributed, eventually consistent object store designed for durability, scalability, and cost efficiency. Data is automatically replicated across multiple nodes and zones, providing resilience against hardware failure without requiring RAID or shared storage infrastructure.
+
+Object Storage is used as the default backend for volume backups, instance snapshots, and large-scale unstructured data — images, logs, archives, and media.
+
+<CardGroup cols={3}>
+  <Card title="High Durability" icon="shield-check">
+    Data is replicated across multiple storage nodes and failure zones. A configurable replication factor (default: 3×) protects against concurrent hardware failures.
+  </Card>
+  <Card title="Horizontal Scale" icon="arrows-left-right">
+    Capacity is expanded by adding storage nodes. No downtime, no RAID rebuild. The ring automatically rebalances data across new nodes.
+  </Card>
+  <Card title="S3-Compatible API" icon="code">
+    Supports both the native Swift REST API and an S3-compatible interface, enabling integration with existing S3-aware tools and SDKs.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture
+
+The Object Storage service is built on a set of distributed components that together provide consistent hashing, replication, and data access:
+
+| Component | Role |
+|---|---|
+| **Proxy Server** | Entry point for all API requests. Routes requests to appropriate storage nodes via the ring. Handles authentication, caching, and load distribution. |
+| **Account Server** | Manages the list of containers per account. |
+| **Container Server** | Manages the list of objects within a container. |
+| **Object Server** | Stores and retrieves the actual object data on disk. |
+| **The Ring** | A consistent hash ring that maps object, container, and account names to physical storage locations. Determines which nodes hold each piece of data. |
+| **Replicator** | Background process that ensures each object reaches its required number of replicas across nodes and zones. |
+
+### Storage Policies
+
+Storage policies allow different replication or erasure coding configurations to coexist within the same cluster. Containers are assigned to a policy at creation time:
+
+| Policy Type | Description | Use Case |
+|---|---|---|
+| Replication | Each object stored N times on different nodes | General purpose; highest availability |
+| Erasure Coding | Data split into fragments distributed across nodes | Large objects, archive workloads; higher efficiency, lower replication overhead |
+
+---
+
+## Prerequisites
+
+- Object Storage service deployed and configured with at least one storage policy
+- Valid Xloud credentials with `swiftoperator` or `admin` role
+- `python-swiftclient` or `python-openstackclient` installed for CLI access
+- For S3-compatible access: S3 middleware (`tempauth` or `keystoneauth`) configured
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Navigate to Object Storage">
+        Go to **Project → Object Store → Containers**.
+      </Step>
+      <Step title="Create a Container">
+        Click **+ Container**.
+
+        | Field | Description |
+        |---|---|
+        | Container Name | Unique name within the account (e.g., `backups-2026`, `media-assets`) |
+        | Container Access | **Private** — access requires credentials. **Public** — objects accessible without authentication. |
+      </Step>
+      <Step title="Upload Objects">
+        Open the container, click **Upload File**, and select one or more files. Large file support is handled automatically via segmented uploads.
+      </Step>
+      <Step title="Manage Objects">
+        - Click an object name to download it
+        - Use the delete icon to remove objects
+        - Copy the object URL for public containers to share direct links
+      </Step>
+      <Step title="Set Container Metadata">
+        Click the **Edit** icon on a container to add custom metadata key-value pairs. Metadata is used for access control, object versioning, and expiration policies.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Container Operations
+
+    <Steps>
+      <Step title="Create a Container">
+        <CodeGroup>
+        ```bash title="Create a private container"
+        openstack container create backups-2026
+        ```
+
+        ```bash title="Create a public container"
+        swift post --read-acl ".r:*,.rlistings" media-assets
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Upload Objects">
+        <CodeGroup>
+        ```bash title="Upload a single file"
+        openstack object create backups-2026 /path/to/backup.tar.gz
+        ```
+
+        ```bash title="Upload a directory (swift CLI)"
+        swift upload backups-2026 /path/to/backup-directory/
+        ```
+
+        ```bash title="Upload large file with auto-segmentation"
+        swift upload --segment-size 1G backups-2026 /path/to/large-file.img
+        ```
+        </CodeGroup>
+
+        <Note>
+          Objects larger than 5 GB must be uploaded as segmented (manifest) objects. The `swift` CLI handles segmentation automatically with `--segment-size`. The Swift API maximum single-object size is 5 GB.
+        </Note>
+      </Step>
+
+      <Step title="List and Download Objects">
+        <CodeGroup>
+        ```bash title="List containers"
+        openstack container list
+        ```
+
+        ```bash title="List objects in a container"
+        openstack object list backups-2026
+        ```
+
+        ```bash title="Download an object"
+        openstack object save backups-2026 backup.tar.gz
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Set Object Expiration">
+        Automatically delete objects after a set number of seconds:
+
+        <CodeGroup>
+        ```bash title="Set object to expire in 30 days"
+        swift post -H "X-Delete-After: 2592000" backups-2026 old-backup.tar.gz
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Enable Object Versioning">
+        Route overwrites to a versioning container to preserve previous object versions:
+
+        <CodeGroup>
+        ```bash title="Enable versioning on a container"
+        swift post -H "X-Versions-Location: backups-2026-versions" backups-2026
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Generate a Temporary URL">
+        Provide time-limited access to private objects without credentials:
+
+        <CodeGroup>
+        ```bash title="Generate a 1-hour temporary URL"
+        swift tempurl GET 3600 /v1/AUTH_<account>/backups-2026/backup.tar.gz <temp-url-key>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Delete Objects and Containers">
+        <CodeGroup>
+        ```bash title="Delete an object"
+        openstack object delete backups-2026 backup.tar.gz
+        ```
+
+        ```bash title="Delete all objects then container"
+        swift delete backups-2026
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Key Capabilities
+
+<AccordionGroup>
+  <Accordion title="Container Quotas">
+    Limit storage consumption per container to prevent runaway usage:
+
+    <CodeGroup>
+    ```bash title="Set container quota (bytes)"
+    swift post -H "X-Container-Meta-Quota-Bytes: 107374182400" backups-2026
+    ```
+
+    ```bash title="Set container quota (object count)"
+    swift post -H "X-Container-Meta-Quota-Count: 10000" backups-2026
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Bulk Operations">
+    Upload or delete many objects in a single API call using the bulk operations middleware. Useful for large archive imports and cleanup jobs.
+  </Accordion>
+  <Accordion title="Container Synchronization">
+    Replicate containers between two Object Storage clusters (e.g., across data centers) for geo-redundancy:
+
+    <CodeGroup>
+    ```bash title="Configure container sync"
+    swift post --sync-to https://<remote-cluster>/v1/AUTH_<account>/backup-replica \
+               --sync-key <shared-secret> \
+               backups-2026
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="S3 API Compatibility">
+    The Object Storage service exposes an S3-compatible endpoint, enabling existing S3 tools (rclone, s3cmd, AWS CLI, boto3) to read and write objects without code changes.
+
+    <CodeGroup>
+    ```bash title="Configure AWS CLI for Xloud Object Storage"
+    aws configure --profile xloud
+    # Set endpoint: http://<object-storage-endpoint>
+    # Set access key and secret from Xloud EC2 credentials
+
+    aws s3 ls s3://backups-2026 --endpoint-url http://<object-storage-endpoint> --profile xloud
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Verify Service Endpoint">
+    <CodeGroup>
+    ```bash title="Confirm object storage endpoint"
+    openstack endpoint list --service object-store
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Test Upload and Retrieve">
+    <CodeGroup>
+    ```bash title="Create test container and upload"
+    openstack container create storage-test
+    echo "xloud object storage validation" > test.txt
+    openstack object create storage-test test.txt
+    openstack object save storage-test test.txt --file retrieved-test.txt
+    cat retrieved-test.txt
+    ```
+    </CodeGroup>
+
+    Output must match the uploaded content.
+  </Step>
+  <Step title="Check Replication Status">
+    <CodeGroup>
+    ```bash title="View cluster replication info"
+    swift-recon --replication --verbose
+    ```
+    </CodeGroup>
+
+    Confirm replication completion percentage is at or near 100% across all nodes.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Naming Conventions for Backup Containers">
+    Use date-segmented or environment-segmented container names to simplify lifecycle management:
+    - `backups-prod-2026-03`
+    - `snapshots-staging-2026-q1`
+
+    Avoid storing all backups in a single container — large containers (millions of objects) increase listing latency.
+  </Accordion>
+  <Accordion title="Use Object Expiration for Automated Cleanup">
+    Set `X-Delete-After` on backup objects matching the retention policy. This eliminates the need for cron jobs or manual cleanup scripts and prevents accumulation of expired backup data.
+  </Accordion>
+  <Accordion title="Enable Container Versioning for Critical Data">
+    Enable versioning on containers holding critical backup objects. This provides a safety net against accidental overwrites and supports point-in-time recovery at the object level.
+  </Accordion>
+</AccordionGroup>

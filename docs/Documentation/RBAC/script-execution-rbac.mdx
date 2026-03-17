@@ -1,0 +1,154 @@
+---
+title: "Script Execution & Console Access"
+description: "Govern API access to consoles, console logs, and remote execution endpoints on running instances."
+---
+
+## Overview
+
+Script execution and interactive access to running instances is mediated through console and remote execution APIs. These endpoints are sensitive — they provide direct shell or screen access to instance operating systems — and must be tightly controlled.
+
+---
+
+## Console and Remote Execution Policies
+
+| Operation | Policy Rule | Minimum Role | Description |
+|---|---|---|---|
+| Get remote console URL | `os_compute_api:os-remote-consoles` | `PROJECT_MEMBER_OR_ADMIN` | Generates a time-limited URL for VNC, SPICE, or RDP console access |
+| Get console output (log) | `os_compute_api:os-console-output` | `PROJECT_MEMBER_OR_ADMIN` | Returns last N lines of the instance console log — equivalent to reading stdout |
+| Validate console auth token | `os_compute_api:os-console-auth-tokens` | `ADMIN` | Validates a console authentication token — internal/admin use only |
+
+---
+
+## Console Types
+
+| Console Protocol | Use Case | Requires GUI |
+|---|---|---|
+| VNC | Standard graphical console — full desktop/terminal access | Yes (browser) |
+| SPICE | High-performance graphical console — better for desktop workloads | Yes (browser) |
+| RDP | Windows Remote Desktop access | Yes (RDP client) |
+| Serial | Text-only console — accessible even when network is down | No |
+| MKS | VMware-compatible console protocol | Yes |
+
+---
+
+## Script Execution via User Data
+
+User data scripts run once at first boot via cloud-init. This is the preferred method for automated configuration — no ongoing API access to the instance is required after launch.
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Provide User Data at Launch">
+        In the **Launch Instance** dialog, navigate to the **Configuration** tab.
+
+        Paste a cloud-init script into the **User Data** field:
+
+        <CodeGroup>
+        ```bash title="Example: Install and start nginx at boot"
+        #!/bin/bash
+        apt-get update -y
+        apt-get install -y nginx
+        systemctl enable nginx
+        systemctl start nginx
+        ```
+        </CodeGroup>
+      </Step>
+      <Step title="Access Console for Interactive Execution">
+        Navigate to **Project → Compute → Instances → [Instance] → Actions → Console**.
+
+        The in-browser console provides interactive shell access. Authenticate with the instance OS credentials or injected SSH key.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Launch with User Data Script">
+        <CodeGroup>
+        ```bash title="Launch instance with user data script"
+        openstack server create \
+          --flavor m1.medium \
+          --image ubuntu-24.04-amd64 \
+          --key-name my-keypair \
+          --network <network-id> \
+          --user-data /path/to/setup-script.sh \
+          my-instance
+        ```
+        </CodeGroup>
+
+        Verify the script ran successfully by checking the console log after boot:
+
+        <CodeGroup>
+        ```bash title="View console log (cloud-init output)"
+        openstack console log show my-instance --lines 50
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Get Interactive Console URL">
+        <CodeGroup>
+        ```bash title="Get VNC console URL"
+        openstack console url show --novnc my-instance
+        ```
+
+        ```bash title="Get SPICE console URL"
+        openstack console url show --spice my-instance
+        ```
+
+        ```bash title="Get serial console URL"
+        openstack console url show --serial my-instance
+        ```
+        </CodeGroup>
+
+        The returned URL contains a time-limited authentication token. Open it in a browser for immediate console access.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Restricting Console Access by Role
+
+To restrict interactive console URLs to `manager` and above while allowing readers to retrieve console logs for debugging:
+
+<CodeGroup>
+```yaml title="/etc/nova/policy.yaml"
+"os_compute_api:os-remote-consoles": "rule:PROJECT_MANAGER_OR_ADMIN"
+"os_compute_api:os-console-output": "rule:PROJECT_READER_OR_ADMIN"
+```
+</CodeGroup>
+
+<Tip>
+  Console auth token validation (`os-console-auth-tokens`) should always remain `ADMIN`-only. This endpoint validates the tokens embedded in console URLs — exposing it to project-level roles would allow users to forge or inspect console sessions for instances they do not own.
+</Tip>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Test Console URL Generation">
+    As a `member`-role user, retrieve a console URL — must succeed:
+
+    <CodeGroup>
+    ```bash title="Test console URL generation"
+    openstack console url show --novnc <instance-id>
+    # Expected: Valid URL returned
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Test Console Log Access">
+    As a `reader`-role user, retrieve the console log — must succeed:
+
+    <CodeGroup>
+    ```bash title="Retrieve console log (reader)"
+    openstack console log show <instance-id> --lines 20
+    # Expected: log lines returned
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Confirm Reader Cannot Open Interactive Console">
+    If the policy override restricting consoles to `manager` is applied, authenticate as a `member`-role user and attempt to get a console URL — must be rejected with 403.
+  </Step>
+</Steps>

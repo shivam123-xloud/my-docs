@@ -1,0 +1,684 @@
+---
+title: "Resource Allocation"
+description: "Control how Xloud compute, storage, and network resources are partitioned and assigned across projects, domains, availability zones, and host aggregates."
+---
+
+## Overview
+
+Resource allocation in Xloud operates at two levels. At the identity layer, **projects** and **domains** define the organizational boundaries within which resources are consumed and quotas are enforced. At the infrastructure layer, **host aggregates** and **availability zones** define how physical compute capacity is partitioned and exposed to the scheduler for intelligent instance placement.
+
+Together, these mechanisms give operators full control over who can consume which resources, how much they can consume, and where workloads physically land.
+
+<CardGroup cols={2}>
+  <Card title="Identity-Layer Allocation" icon="sitemap">
+    Projects and domains form the organizational containers that scope resource ownership and quota enforcement across all Xloud services.
+  </Card>
+  <Card title="Infrastructure-Layer Allocation" icon="server">
+    Host aggregates and availability zones partition physical compute hosts, enabling fine-grained scheduling policies and hardware tier isolation.
+  </Card>
+</CardGroup>
+
+---
+
+## Resource Groups
+
+Xloud implements resource grouping as a first-class construct. A **resource group** is a named identity that aggregates heterogeneous infrastructure objects — clouds, physical hosts, virtual machines, networks, resource pools, and datastores — into a single administrative boundary. Users and roles are then assigned to that boundary, controlling what each user can see and do within the group.
+
+### Resource Types Within a Group
+
+| Resource Type | Xloud Construct | Description |
+|---|---|---|
+| **Clouds / Regions** | Region | A top-level deployment boundary. Each region has its own API endpoints and infrastructure. Multi-region deployments group regions under a common identity plane. |
+| **Hosts / Hypervisors** | Compute Node + Host Aggregate | Physical servers running the Xloud hypervisor. Organized into host aggregates by hardware tier, geography, or purpose. |
+| **Virtual Machines** | Server (Project-scoped) | Instances live within a project. All VMs in a project are part of that project's resource group by definition. |
+| **Networks** | Network / Router (Project-scoped) | Virtual networks, subnets, routers, and floating IPs. Network resources are scoped to a project and inherit that project's access controls. |
+| **Resource Pools** | Host Aggregate | Named pools of compute capacity (e.g., `gpu-pool`, `high-mem-pool`). The scheduler routes instances to the correct pool via flavor extra specs. |
+| **Datastores / Volume Backends** | Volume Type + Backend | Named storage targets (Ceph RBD, NFS, LVM). Volume types group volumes by storage class and map them to a specific backend driver. |
+
+### Group-to-User Assignment Model
+
+```
+Region (Cloud)
+  └── Domain
+        └── Project (Resource Group)
+              ├── Instances (VMs)
+              ├── Networks / Subnets
+              ├── Volumes / Datastores
+              ├── Host Aggregate (Resource Pool)
+              └── Role Bindings → Users / Groups
+```
+
+A project is the atomic resource group in Xloud. Assigning a user to a project with an appropriate role grants them access to all resource types within that project's boundary — compute, storage, and network — in a single operation.
+
+<Info>
+  For hardware-level resource pools (host aggregates), access is controlled indirectly through flavors. Users with access to a project can launch instances on a specific resource pool by selecting a flavor whose extra specs target that aggregate. Restrict pool access by limiting which flavors are visible to which projects using flavor access controls.
+</Info>
+
+### Assigning Users to a Resource Group
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Open Project Members">
+        Navigate to **Admin → Identity → Projects → [Select Project] → Members**.
+      </Step>
+      <Step title="Add User to Project">
+        Click **Add Members**. Search for the user by name or email.
+
+        Select the role that defines the user's access level within this resource group:
+
+        | Role | Access Level |
+        |---|---|
+        | `reader` | Read-only — can list and describe resources |
+        | `member` | Standard user — can create and manage their own resources |
+        | `manager` | Project admin — can manage all project resources and members |
+        | `admin` | Platform admin — full access across all resource groups |
+      </Step>
+      <Step title="Assign Group Membership (Bulk)">
+        To assign an entire user group to a resource group, navigate to **Admin → Identity → Groups → [Select Group] → Add to Project**. All group members inherit the assigned role on the project.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Add a User to a Project (Resource Group)">
+        <CodeGroup>
+        ```bash title="Assign member role to user on project"
+        openstack role add \
+          --project <project-id> \
+          --user <user-id> \
+          member
+        ```
+
+        ```bash title="Assign manager role to project admin"
+        openstack role add \
+          --project <project-id> \
+          --user <user-id> \
+          manager
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Add a Group to a Project (Bulk Assignment)">
+        <CodeGroup>
+        ```bash title="Assign role to an entire group on a project"
+        openstack role add \
+          --project <project-id> \
+          --group <group-id> \
+          member
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Verify Assignment">
+        <CodeGroup>
+        ```bash title="List all role assignments for a project"
+        openstack role assignment list \
+          --project <project-id> \
+          --names
+        ```
+        </CodeGroup>
+
+        The output shows each user/group and their assigned role within the resource group.
+      </Step>
+
+      <Step title="Control Access to a Specific Resource Pool (Flavor Access)">
+        Restrict a hardware-tier flavor to specific projects so only those projects can schedule instances on the corresponding host aggregate:
+
+        <CodeGroup>
+        ```bash title="Remove public access from a flavor"
+        openstack flavor set --no-public gpu-large
+        ```
+
+        ```bash title="Grant access to specific project"
+        openstack flavor access add --project <project-id> gpu-large
+        ```
+        </CodeGroup>
+
+        Users in other projects cannot see or use `gpu-large`, preventing them from scheduling into the GPU resource pool.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Identity-Layer Resource Allocation
+
+### Projects as Resource Containers
+
+Every cloud resource in Xloud — instances, volumes, networks, floating IPs, load balancers — is owned by a **project**. Projects are the primary unit of resource isolation and quota enforcement.
+
+| Concept | Role in Resource Allocation |
+|---|---|
+| **Project** | Owns all resources created within it. Quotas are applied per project. Billing and chargeback are typically project-scoped. |
+| **Domain** | Groups projects and users under an administrative boundary. Domain admins manage quota allocation across their projects. |
+| **Region** | A physical or logical division of the Xloud deployment. Resources in one region are isolated from another. Multi-region deployments allow workloads to span geographies. |
+| **Role** | Determines what a user can do with resources inside a project — create, modify, delete, or read-only access. |
+
+### Resource Quota Model
+
+Quotas cap the total resources a project can consume. They are enforced at the API layer — requests that would exceed a quota are rejected before any resource is provisioned.
+
+| Resource | Quota Parameter | Default |
+|---|---|---|
+| Instances | `instances` | 10 |
+| vCPUs | `cores` | 20 |
+| RAM | `ram` (MB) | 51200 (50 GB) |
+| Volumes | `volumes` | 10 |
+| Volume storage | `gigabytes` (GB) | 1000 |
+| Snapshots | `snapshots` | 10 |
+| Floating IPs | `floating_ips` | 10 |
+| Security groups | `security_groups` | 10 |
+| Networks | `networks` | 10 |
+
+<Info>
+  Default quotas are set at the platform level. Per-project overrides allow high-priority projects to receive expanded allocations while lower-priority projects remain constrained.
+</Info>
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="View Project Quotas">
+        Navigate to **Admin → System → Defaults** to view and edit platform-wide default quotas.
+
+        For per-project overrides: **Admin → Identity → Projects → [Select Project] → Modify Quotas**.
+      </Step>
+      <Step title="Set Per-Project Quota Override">
+        In the **Modify Quotas** dialog, adjust the values for each resource category:
+
+        | Tab | Resources Covered |
+        |---|---|
+        | Compute | Instances, vCPUs, RAM, key pairs, server groups |
+        | Volume | Volumes, snapshots, total storage (GB), per-type limits |
+        | Network | Networks, subnets, ports, routers, floating IPs, security groups |
+
+        Set a value to `-1` to grant unlimited quota for that resource.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="View Current Quotas for a Project">
+        <CodeGroup>
+        ```bash title="Show compute quotas"
+        openstack quota show --compute <project-id>
+        ```
+
+        ```bash title="Show all quotas"
+        openstack quota show <project-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Set Per-Project Quota Overrides">
+        <CodeGroup>
+        ```bash title="Set compute quotas"
+        openstack quota set \
+          --instances 50 \
+          --cores 200 \
+          --ram 512000 \
+          <project-id>
+        ```
+
+        ```bash title="Set storage quotas"
+        openstack quota set \
+          --volumes 100 \
+          --gigabytes 10000 \
+          --snapshots 50 \
+          <project-id>
+        ```
+
+        ```bash title="Set network quotas"
+        openstack quota set \
+          --floating-ips 20 \
+          --networks 20 \
+          --security-groups 50 \
+          <project-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Reset to Default Quota">
+        <CodeGroup>
+        ```bash title="Remove per-project override (revert to default)"
+        openstack quota delete <project-id>
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Check Quota Usage">
+        <CodeGroup>
+        ```bash title="Show quota usage for a project"
+        openstack quota show --usage <project-id>
+        ```
+        </CodeGroup>
+
+        The output shows `limit`, `in_use`, and `reserved` for each resource — allowing operators to identify projects approaching their quota ceiling.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Infrastructure-Layer Resource Allocation
+
+### Host Aggregates
+
+Host aggregates are administrator-defined groupings of compute nodes that share one or more physical characteristics. They are **not visible to end users** — they are an internal scheduling mechanism that shapes where the Xloud scheduler places instances.
+
+Aggregates carry **key-value metadata** that the scheduler matches against **flavor extra specs** at launch time.
+
+```
+Host Aggregate: "ssd-tier"
+  Metadata: ssd=true, disk_type=nvme
+  Hosts: compute-node-07, compute-node-08, compute-node-09
+
+Flavor: "m1.fast"
+  Extra Spec: aggregate_instance_extra_specs:ssd=true
+
+Result: Instances of flavor "m1.fast" land only on nodes 07, 08, 09
+```
+
+### Availability Zones
+
+Availability zones (AZs) are a **user-facing** construct that represents a distinct failure domain within a region — typically a separate rack, power feed, or data hall. Unlike host aggregates, AZs are visible to and selectable by end users at instance launch time.
+
+| Property | Host Aggregate | Availability Zone |
+|---|---|---|
+| Visible to users | No | Yes |
+| User-selectable at launch | No | Yes |
+| Hosts can belong to multiple | Yes — multiple aggregates | No — one AZ per host |
+| Metadata supported | Yes | Limited (derived from aggregate) |
+| Scheduling mechanism | Flavor extra specs matching | Direct AZ selection |
+| Primary purpose | Hardware tier isolation | Fault domain isolation |
+
+<Warning>
+  A compute host can belong to many aggregates but **only one availability zone**. Moving an instance between availability zones is not permitted. Plan AZ topology carefully — it cannot be changed for running instances without migration.
+</Warning>
+
+### Placement Service Integration
+
+From Xloud Compute version 18.0.0 onwards, host aggregate memberships are automatically mirrored to the Placement service as **resource provider aggregates**. This enables the placement pre-filter to eliminate entire aggregates before the main filter pass, reducing scheduler load at scale.
+
+Tenant-scoped aggregate isolation is configurable:
+
+```ini title="/etc/nova/nova.conf"
+[scheduler]
+limit_tenants_to_placement_aggregate = True
+placement_aggregate_required_for_tenants = True
+```
+
+When enabled, instances from a tenant are restricted to placement aggregates that include that tenant's project ID — enforcing hardware isolation at the placement layer.
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Create a Host Aggregate">
+        Navigate to **Admin → Compute → Host Aggregates → Create Host Aggregate**.
+
+        | Field | Description |
+        |---|---|
+        | Name | Descriptive name matching the hardware characteristic (e.g., `ssd-tier`, `gpu-nodes`, `high-mem`) |
+        | Availability Zone | Optional — assign an AZ name to make this aggregate an AZ boundary. Leave blank for admin-only aggregates. |
+      </Step>
+
+      <Step title="Add Hosts to the Aggregate">
+        After creation, select the aggregate and click **Manage Hosts**.
+
+        Add compute nodes that share the hardware characteristic this aggregate represents. Only add hosts that actually have the capability the aggregate metadata describes.
+      </Step>
+
+      <Step title="Set Aggregate Metadata">
+        Open the aggregate and click **Edit Host Aggregate**.
+
+        Add key-value pairs in the **Metadata** section:
+
+        | Key | Example Value | Purpose |
+        |---|---|---|
+        | `ssd` | `true` | Tag SSD-backed hosts |
+        | `gpu` | `true` | Tag GPU-equipped hosts |
+        | `disk_type` | `nvme` | Identify NVMe storage hosts |
+        | `network` | `25gbe` | Tag high-bandwidth network hosts |
+        | `tenant` | `<project-id>` | Restrict aggregate to a specific project |
+      </Step>
+
+      <Step title="Create a Matching Flavor">
+        Navigate to **Admin → Compute → Flavors → Create Flavor**.
+
+        After creating the flavor, open it and navigate to the **Extra Specs** tab. Add the matching key:
+
+        | Key | Value |
+        |---|---|
+        | `aggregate_instance_extra_specs:ssd` | `true` |
+
+        Instances launched with this flavor will only be scheduled on hosts in aggregates with `ssd=true`.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Host Aggregate Management
+
+    <Steps>
+      <Step title="Create an Aggregate">
+        <CodeGroup>
+        ```bash title="Create aggregate (no AZ)"
+        openstack aggregate create ssd-tier
+        ```
+
+        ```bash title="Create aggregate with availability zone"
+        openstack aggregate create \
+          --zone production-az-ssd \
+          ssd-tier
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Add Compute Hosts">
+        <CodeGroup>
+        ```bash title="Add hosts to aggregate"
+        openstack aggregate add host ssd-tier compute-node-07
+        openstack aggregate add host ssd-tier compute-node-08
+        openstack aggregate add host ssd-tier compute-node-09
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Set Aggregate Metadata">
+        <CodeGroup>
+        ```bash title="Set metadata properties"
+        openstack aggregate set \
+          --property ssd=true \
+          --property disk_type=nvme \
+          ssd-tier
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Create a Flavor with Matching Extra Spec">
+        <CodeGroup>
+        ```bash title="Create flavor"
+        openstack flavor create \
+          --vcpus 8 \
+          --ram 32768 \
+          --disk 200 \
+          m1.fast
+        ```
+
+        ```bash title="Set extra spec to match aggregate"
+        openstack flavor set \
+          --property aggregate_instance_extra_specs:ssd=true \
+          m1.fast
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Enable the Aggregate Filter in nova.conf">
+        <CodeGroup>
+        ```ini title="/etc/nova/nova.conf"
+        [filter_scheduler]
+        enabled_filters = ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,AggregateInstanceExtraSpecsFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter
+        ```
+        </CodeGroup>
+
+        Restart `nova-scheduler` after changing `enabled_filters`:
+
+        <CodeGroup>
+        ```bash title="Restart scheduler"
+        systemctl restart nova-scheduler
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Advanced: Tenant-Isolated Aggregates
+
+    Restrict specific aggregates to designated projects — preventing other tenants from scheduling instances on dedicated hardware:
+
+    <Steps>
+      <Step title="Tag Aggregate with Project ID">
+        <CodeGroup>
+        ```bash title="Restrict aggregate to a specific project"
+        openstack aggregate set \
+          --property filter_tenant_id=<project-id> \
+          dedicated-hardware-tier
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Enable Tenant Isolation in nova.conf">
+        <CodeGroup>
+        ```ini title="/etc/nova/nova.conf"
+        [filter_scheduler]
+        enabled_filters = ...,AggregateMultiTenancyIsolation
+
+        [scheduler]
+        limit_tenants_to_placement_aggregate = True
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+
+    ---
+
+    ### Advanced: Image Pre-Caching on Aggregates
+
+    Pre-cache images to compute nodes in an aggregate to reduce boot latency for large images:
+
+    <CodeGroup>
+    ```bash title="Cache image across aggregate nodes"
+    openstack aggregate cache image \
+      --image <image-id> \
+      ssd-tier
+    ```
+    </CodeGroup>
+
+    <Tip>
+      Pre-caching is useful for frequently launched images on large fleets. Nodes with the image already cached skip the image download entirely at boot time, significantly reducing provisioning latency.
+    </Tip>
+
+  </Tab>
+</Tabs>
+
+---
+
+## End-to-End: Allocation Design Patterns
+
+<AccordionGroup>
+  <Accordion title="Hardware Tier Isolation (SSD vs HDD)">
+    **Goal:** Ensure database instances only land on SSD-backed nodes; general workloads use HDD nodes.
+
+    **Setup:**
+    1. Create aggregate `ssd-tier` → add SSD hosts → set `ssd=true`
+    2. Create aggregate `hdd-tier` → add HDD hosts → set `ssd=false`
+    3. Create flavor `db.large` → extra spec `aggregate_instance_extra_specs:ssd=true`
+    4. Create flavor `app.medium` → no extra spec (lands on any host)
+    5. Enable `AggregateInstanceExtraSpecsFilter`
+
+    Database instances using `db.large` land exclusively on SSD nodes. General app instances using `app.medium` can land anywhere.
+  </Accordion>
+
+  <Accordion title="Dedicated Tenant Hardware">
+    **Goal:** A premium project gets exclusive access to a set of high-memory compute nodes.
+
+    **Setup:**
+    1. Create aggregate `premium-highmem` → add high-memory hosts → set `filter_tenant_id=<premium-project-id>`
+    2. Enable `AggregateMultiTenancyIsolation` filter
+    3. Set `limit_tenants_to_placement_aggregate = True`
+
+    Only instances from the premium project can be scheduled onto those nodes. All other projects are rejected by the filter.
+  </Accordion>
+
+  <Accordion title="Availability Zone Fault Domains">
+    **Goal:** Split a three-node database cluster across three AZs so a single AZ failure doesn't take the whole cluster down.
+
+    **Setup:**
+    1. Create aggregates `az-1`, `az-2`, `az-3` — each with a different `--zone` name
+    2. Assign one-third of compute nodes to each aggregate/AZ
+    3. Create server group with `anti-affinity` policy
+    4. Launch each database node specifying a different `--availability-zone` — or rely on `ServerGroupAntiAffinityFilter` to distribute automatically
+
+    Each cluster node is guaranteed to land in a separate fault domain.
+  </Accordion>
+
+  <Accordion title="Project Quota Tiering">
+    **Goal:** Enforce resource limits by project tier (free, standard, premium).
+
+    | Tier | Instances | vCPUs | RAM | Storage |
+    |---|---|---|---|---|
+    | Free | 2 | 4 | 8 GB | 50 GB |
+    | Standard | 20 | 80 | 160 GB | 2 TB |
+    | Premium | 100 | 500 | 2 TB | 20 TB |
+
+    Apply per-project quota overrides via `openstack quota set` based on tier. Automate quota assignment as part of project provisioning workflows.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Aggregate Membership">
+    <CodeGroup>
+    ```bash title="List aggregates and their hosts"
+    openstack aggregate list --long
+    ```
+
+    ```bash title="Show specific aggregate details"
+    openstack aggregate show ssd-tier
+    ```
+    </CodeGroup>
+
+    Confirm all intended hosts appear under the aggregate and metadata properties are correctly set.
+  </Step>
+  <Step title="Verify Scheduler Filter is Active">
+    <CodeGroup>
+    ```bash title="Check scheduler service"
+    openstack compute service list --service nova-scheduler
+    ```
+    </CodeGroup>
+
+    Confirm service is `up` and `enabled`. Check `/etc/nova/nova.conf` that `AggregateInstanceExtraSpecsFilter` is in `enabled_filters`.
+  </Step>
+  <Step title="Test Placement Enforcement">
+    Launch an instance with the aggregate-targeted flavor and confirm it lands on an aggregate host:
+
+    <CodeGroup>
+    ```bash title="Launch instance with targeted flavor"
+    openstack server create \
+      --flavor m1.fast \
+      --image ubuntu-24.04-amd64 \
+      --network <network-id> \
+      allocation-test-01
+    ```
+
+    ```bash title="Check which host it landed on"
+    openstack server show allocation-test-01 \
+      -c OS-EXT-SRV-ATTR:hypervisor_hostname
+    ```
+    </CodeGroup>
+
+    The reported hostname must be one of the hosts in the `ssd-tier` aggregate.
+  </Step>
+  <Step title="Validate Quota Enforcement">
+    Attempt to exceed the project quota and confirm the API rejects the request:
+
+    <CodeGroup>
+    ```bash title="Check usage against limits"
+    openstack quota show --usage <project-id>
+    ```
+    </CodeGroup>
+
+    Fields show `limit`, `in_use`, and `reserved`. A project at its `instances` limit cannot launch additional instances until existing ones are deleted.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Match Aggregate Metadata to Real Hardware">
+    Only tag hosts with metadata that accurately reflects their hardware. A host labeled `ssd=true` that actually has spinning disks will cause performance SLA violations for flavors routed to it. Audit aggregate membership regularly against the actual hardware inventory.
+  </Accordion>
+  <Accordion title="Keep AZs Stable">
+    Availability zone assignments cannot be changed for running instances. Define AZ topology before production workloads are launched. Over-engineering AZ boundaries (e.g., per-rack AZs at small scale) adds operational overhead without proportional availability gain — two or three AZs per region is sufficient for most deployments.
+  </Accordion>
+  <Accordion title="Quota Buffer for Headroom">
+    Set project quotas slightly below the physical capacity of the underlying aggregate. A project quota that exactly matches hardware capacity leaves no room for operator maintenance operations (e.g., live migrating instances off a node before taking it down for servicing).
+  </Accordion>
+  <Accordion title="Automate Quota Assignment at Project Creation">
+    Manually setting per-project quotas is error-prone at scale. Integrate quota assignment into the project provisioning workflow — whether through infrastructure-as-code (Terraform, Ansible) or a custom self-service portal that maps project tiers to quota templates.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Instance lands on wrong host (not in targeted aggregate)">
+    **Cause:** `AggregateInstanceExtraSpecsFilter` is not in `enabled_filters`, or the flavor extra spec key does not exactly match the aggregate metadata key.
+
+    **Resolution:**
+
+    <CodeGroup>
+    ```bash title="Verify filter is enabled"
+    grep AggregateInstanceExtraSpecsFilter /etc/nova/nova.conf
+    ```
+
+    ```bash title="Compare flavor extra spec vs aggregate metadata"
+    openstack flavor show m1.fast -c extra_specs
+    openstack aggregate show ssd-tier -c properties
+    ```
+    </CodeGroup>
+
+    Key names must match exactly — `aggregate_instance_extra_specs:ssd` in the flavor spec must correspond to `ssd` in the aggregate metadata.
+  </Accordion>
+  <Accordion title="'No valid host found' for aggregate-targeted flavor">
+    **Cause:** All hosts in the targeted aggregate are at capacity, disabled, or not running `nova-compute`.
+
+    **Resolution:**
+
+    <CodeGroup>
+    ```bash title="Check compute service state on aggregate hosts"
+    openstack compute service list --service nova-compute
+    ```
+    </CodeGroup>
+
+    Verify hosts are `up` and `enabled`. Check available capacity:
+
+    <CodeGroup>
+    ```bash title="Show hypervisor capacity"
+    openstack hypervisor show <hostname> -c free_ram_mb -c free_disk_gb -c vcpus_used -c vcpus
+    ```
+    </CodeGroup>
+  </Accordion>
+  <Accordion title="Project exceeded quota — legitimate requests rejected">
+    **Cause:** Project has consumed its full quota allocation.
+
+    **Resolution:** Review actual usage and either clean up unused resources or increase the quota:
+
+    <CodeGroup>
+    ```bash title="Identify unused instances"
+    openstack server list --project <project-id> -c Name -c Status | grep -v ACTIVE
+    ```
+
+    ```bash title="Increase quota if warranted"
+    openstack quota set --instances 30 --cores 120 <project-id>
+    ```
+    </CodeGroup>
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,406 @@
+---
+title: "Obtaining VM Images"
+description: "Source, download, and register pre-built cloud images into the Xloud Image Service for use with Xloud Compute instances."
+---
+
+## Overview
+
+Xloud Compute requires virtual machine images to be registered in the **Xloud Image Service** before they can be used to launch instances. The fastest path to a working image is to download a pre-built cloud image from an official distribution source and upload it directly.
+
+Pre-built cloud images are purpose-built for cloud environments. They include:
+
+<CardGroup cols={3}>
+  <Card title="Cloud-Init" icon="key">
+    Automatic SSH key injection and user-data processing on first boot — no manual setup required.
+  </Card>
+  <Card title="Minimal Footprint" icon="minimize">
+    Stripped-down OS installs optimized for fast provisioning and low disk usage.
+  </Card>
+  <Card title="hypervisor Compatible" icon="microchip">
+    Pre-configured with VirtIO drivers and hypervisor-optimized settings for best performance on Xloud.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Pre-built images disable password-based SSH authentication by default. Access is exclusively via SSH key pairs injected at launch. Ensure a valid key pair is available in your Xloud project before launching an instance.
+</Warning>
+
+---
+
+## Recommended Image Format
+
+| Format | Extension | Use Case |
+|--------|-----------|----------|
+| QCOW2 | `.img`, `.qcow2` | Recommended — supports snapshots and copy-on-write; optimized for Xloud hypervisor |
+| RAW | `.raw`, `.img` | Maximum I/O performance; no snapshot support |
+| VMDK | `.vmdk` | VMware image migration only |
+
+<Tip>
+  Always prefer **QCOW2** images when available. They support Xloud snapshot operations and consume less storage via copy-on-write allocation.
+</Tip>
+
+---
+
+## Available Cloud Images
+
+The following distributions provide official cloud images compatible with Xloud Compute.
+
+### Linux Distributions
+
+| Distribution | Default User | Architecture | Notes |
+|---|---|---|---|
+| Ubuntu | `ubuntu` | x86\_64, aarch64 | Recommended. LTS releases available. `noble-server-cloudimg-amd64.img` for Ubuntu 24.04. |
+| AlmaLinux | `almalinux` | x86\_64 | RHEL-compatible. Actively maintained. |
+| Rocky Linux | `rocky` | x86\_64 | RHEL-compatible. Community-supported. |
+| CentOS Stream | `cloud-user` | x86\_64 | CentOS 9 and 10 Stream images available. |
+| Red Hat Enterprise Linux | `cloud-user` | x86\_64 | Requires active Red Hat subscription. RHEL 7, 8, and 9 supported. |
+| Debian | `debian` | x86\_64 | Point-release and weekly testing builds available. |
+| Fedora | `fedora` | x86\_64 | Bleeding-edge packages; not recommended for production. |
+| openSUSE | `opensuse` | x86\_64 | Available under Alternative Downloads → Cloud Image. |
+| SUSE Linux Enterprise | `opensuse` | x86\_64 | Official SUSE cloud images. |
+| Kali Linux | `kali` | x86\_64 | Security-focused. Not recommended for general workloads. |
+| Alpine Linux | `alpine` | x86\_64 | Minimal footprint. Suitable for container-adjacent workloads. |
+| Arch Linux | `arch` | x86\_64 | Rolling release. Not recommended for production. |
+
+### BSD Variants
+
+| Distribution | Default User | Source |
+|---|---|---|
+| FreeBSD | `freebsd` | BSD-Cloud-Image.org (unofficial) |
+| OpenBSD | `openbsd` | BSD-Cloud-Image.org (unofficial) |
+| NetBSD | `netbsd` | BSD-Cloud-Image.org (unofficial) |
+| DragonFlyBSD | `dragonflybsd` | BSD-Cloud-Image.org (unofficial) |
+
+<Note>
+  BSD images from BSD-Cloud-Image.org are community-maintained and not officially endorsed. Validate image integrity before use in production environments.
+</Note>
+
+### Windows
+
+| Source | Versions | Notes |
+|---|---|---|
+| Cloudbase Solutions | Windows Server 2012 R2 (trial) | Includes cloudbase-init and VirtIO drivers. Ready to use with Xloud. |
+| Microsoft Evaluation Center | Server 2016, 2019, Windows 10 | ISO only. Requires image build process before upload. |
+| Fedora VirtIO | Windows (various) | Provides pre-built Windows images with VirtIO drivers. |
+
+<Info>
+  Windows images require **VirtIO drivers** for network and disk functionality on Xloud Compute. Images from Cloudbase Solutions include these drivers pre-installed. If building from a Microsoft ISO, install the Fedora VirtIO driver package during the build process.
+</Info>
+
+### Test Image (CirrOS)
+
+CirrOS is a minimal Linux distribution designed exclusively for cloud infrastructure testing. It is not suitable for production use.
+
+| Property | Value |
+|---|---|
+| Recommended image | `cirros-0.6.2-x86_64-disk.img` |
+| Format | QCOW2 |
+| Default user | `cirros` |
+| Default password | `gocubsgo` |
+
+<Warning>
+  Never attach a public IP address to a CirrOS instance. CirrOS images have no security hardening and expose default credentials.
+</Warning>
+
+---
+
+## Prerequisites
+
+- Xloud CLI (`python-openstackclient`) installed and configured with valid credentials
+- Active Xloud project with image upload permissions
+- Sufficient quota in the Image Service for the target image size
+- For Windows images: ISO source and a build environment (if not using a pre-built image)
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Steps>
+      <Step title="Download the Image">
+        Download the cloud image from the distribution's official source to your local machine. Select QCOW2 format where available.
+
+        Example for Ubuntu 24.04:
+        - Navigate to `https://cloud-images.ubuntu.com/noble/current/`
+        - Download `noble-server-cloudimg-amd64.img`
+      </Step>
+
+      <Step title="Open the Image Service">
+        In the Xloud dashboard, navigate to **Project → Compute → Images**.
+      </Step>
+
+      <Step title="Create a New Image">
+        Click **Create Image** in the top-right corner.
+      </Step>
+
+      <Step title="Fill in Image Details">
+        Complete the image creation form:
+
+        | Field | Value |
+        |---|---|
+        | Image Name | A descriptive name (e.g., `ubuntu-24.04-amd64`) |
+        | Image Description | Optional — distribution version and purpose |
+        | Image Source | File |
+        | Image File | Browse and select the downloaded image file |
+        | Format | QCOW2 (or match the downloaded format) |
+        | Architecture | x86\_64 |
+        | Minimum Disk (GB) | Set per distribution requirements |
+        | Minimum RAM (MB) | Set per distribution requirements |
+        | Visibility | Private (project-only) or Public (platform-wide) |
+        | Protected | Enable to prevent accidental deletion |
+      </Step>
+
+      <Step title="Submit and Monitor">
+        Click **Create Image**. The image will enter **Saving** status during upload, then transition to **Active** once the upload completes.
+
+        Large images may take several minutes. Do not navigate away during upload.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+    <Steps>
+      <Step title="Download the Image">
+        Download directly to the machine running the Xloud CLI:
+
+        <CodeGroup>
+        ```bash title="Ubuntu 24.04 (Noble)"
+        wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+        ```
+
+        ```bash title="CirrOS 0.6.2 (test only)"
+        wget https://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img
+        ```
+        </CodeGroup>
+
+        For other distributions, download from the official source listed in the [Available Cloud Images](#available-cloud-images) section above.
+      </Step>
+
+      <Step title="Verify Image Integrity">
+        Where SHA256 checksums are provided by the distribution, validate before uploading:
+
+        <CodeGroup>
+        ```bash title="Verify checksum"
+        sha256sum noble-server-cloudimg-amd64.img
+        ```
+        </CodeGroup>
+
+        Compare the output against the checksum published on the distribution's download page.
+      </Step>
+
+      <Step title="Upload the Image">
+        Register the image in the Xloud Image Service:
+
+        <CodeGroup>
+        ```bash title="Upload QCOW2 image"
+        openstack image create \
+          --disk-format qcow2 \
+          --container-format bare \
+          --file noble-server-cloudimg-amd64.img \
+          --property os_type=linux \
+          --property os_distro=ubuntu \
+          --public \
+          "ubuntu-24.04-amd64"
+        ```
+
+        ```bash title="Upload RAW image"
+        openstack image create \
+          --disk-format raw \
+          --container-format bare \
+          --file <image-file.raw> \
+          --public \
+          "<image-name>"
+        ```
+        </CodeGroup>
+
+        <Note>
+          Use `--public` to make the image available to all projects on the platform. Use `--private` to restrict it to the current project. Only administrators can create public images.
+        </Note>
+      </Step>
+
+      <Step title="Set Image Properties (Optional)">
+        Tag images with metadata to improve discoverability and enable hypervisor optimizations:
+
+        <CodeGroup>
+        ```bash title="Set image properties"
+        openstack image set \
+          --property hw_disk_bus=virtio \
+          --property hw_vif_model=virtio \
+          --property hw_scsi_model=virtio-scsi \
+          "ubuntu-24.04-amd64"
+        ```
+        </CodeGroup>
+
+        These properties instruct Xloud Compute to attach VirtIO disk and network devices, improving instance I/O performance.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Confirm Image is Active">
+    <CodeGroup>
+    ```bash title="List images and check status"
+    openstack image list --name "ubuntu-24.04-amd64"
+    ```
+    </CodeGroup>
+
+    The image status must show **active** before it can be used to launch instances. Any other status (`saving`, `queued`, `killed`) indicates an incomplete or failed upload.
+  </Step>
+
+  <Step title="Inspect Image Details">
+    <CodeGroup>
+    ```bash title="Show image properties"
+    openstack image show "ubuntu-24.04-amd64"
+    ```
+    </CodeGroup>
+
+    Verify:
+    - `disk_format`: matches the uploaded format (`qcow2` or `raw`)
+    - `container_format`: `bare`
+    - `status`: `active`
+    - `size`: non-zero and matches expected file size
+  </Step>
+
+  <Step title="Launch a Test Instance">
+    Boot an instance from the uploaded image to confirm it is functional:
+
+    <CodeGroup>
+    ```bash title="Launch test instance"
+    openstack server create \
+      --flavor m1.small \
+      --image "ubuntu-24.04-amd64" \
+      --key-name <your-keypair> \
+      --network <your-network> \
+      image-validation-test
+    ```
+    </CodeGroup>
+
+    Monitor status until **ACTIVE**:
+
+    <CodeGroup>
+    ```bash title="Watch instance status"
+    openstack server show image-validation-test -c status -c addresses
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Verify SSH Access">
+    Once the instance is active and has an IP address, connect using the distribution's default user:
+
+    <CodeGroup>
+    ```bash title="SSH into instance"
+    ssh -i ~/.ssh/<your-key>.pem ubuntu@<instance-ip>
+    ```
+    </CodeGroup>
+
+    Successful login confirms the image is correctly configured with cloud-init and SSH key injection.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Image Naming Convention">
+    Adopt a consistent naming scheme across all images to simplify fleet management:
+
+    ```
+    <distro>-<version>-<arch>[-<variant>]
+    ```
+
+    Examples:
+    - `ubuntu-24.04-amd64`
+    - `rhel-9-x86_64-minimal`
+    - `windows-server-2022-amd64`
+
+    Consistent naming enables predictable image selection in automation and infrastructure-as-code workflows.
+  </Accordion>
+
+  <Accordion title="Image Lifecycle Management">
+    - **Pin versions**: Reference images by name and version, not by `latest` tag, in production launch templates
+    - **Deprecate don't delete**: Mark old images as deprecated (`--property deprecation_date=<date>`) before removal to prevent breaking existing automation
+    - **Protect production images**: Enable the protected flag on images in active use to prevent accidental deletion
+    - **Audit regularly**: Remove images with zero active instances that are beyond their support window to reclaim storage quota
+  </Accordion>
+
+  <Accordion title="Security Hardening Before Use">
+    Pre-built cloud images are general-purpose. Before promoting an image to production use:
+
+    - Run OS-level security benchmarks (CIS, DISA STIG) against a test instance
+    - Apply all available OS patches immediately after first boot
+    - Disable unused services and close unnecessary ports
+    - Consider building a custom hardened image using the patched, configured state as a snapshot baseline
+  </Accordion>
+
+  <Accordion title="Subscription-Gated Images (RHEL)">
+    Red Hat Enterprise Linux images require a valid Red Hat subscription to access and receive updates. Upload these images as **private** images restricted to projects that hold the appropriate entitlements.
+
+    Do not upload RHEL images as **public** — doing so may violate Red Hat licensing terms.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Image stuck in 'saving' or 'queued' status">
+    **Cause:** Upload interrupted or the Image Service is under high load.
+
+    **Resolution:**
+
+    <Steps>
+      <Step title="Check Image Service logs">
+        Review Glance API logs on the controller node for upload errors.
+      </Step>
+      <Step title="Delete the stuck image">
+        <CodeGroup>
+        ```bash title="Delete and re-upload"
+        openstack image delete <image-id>
+        ```
+        </CodeGroup>
+      </Step>
+      <Step title="Re-upload">
+        Retry the upload. For large images (>10 GB), ensure network stability between the source and the Xloud API endpoint.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Instance fails to launch with 'No valid host found'">
+    **Cause:** The image's minimum disk or RAM requirements exceed available compute resources, or the image format is unsupported by the hypervisor.
+
+    **Resolution:**
+    - Verify `min_disk` and `min_ram` image properties match an available flavor
+    - Confirm the image `disk_format` is `qcow2` or `raw` — other formats may not be supported
+    - Check that the Xloud Compute hypervisor node has sufficient free resources
+  </Accordion>
+
+  <Accordion title="SSH connection refused after instance launch">
+    **Cause:** No key pair was injected, or cloud-init failed during boot.
+
+    **Resolution:**
+    - Confirm a key pair was specified at instance launch (`--key-name`)
+    - Access the instance console log to check cloud-init output:
+
+    <CodeGroup>
+    ```bash title="View console log"
+    openstack console log show <instance-id>
+    ```
+    </CodeGroup>
+
+    Look for cloud-init errors or confirmation that SSH keys were successfully written.
+  </Accordion>
+
+  <Accordion title="Windows instance has no network connectivity">
+    **Cause:** The image was not built with VirtIO network drivers.
+
+    **Resolution:** Use a Windows image from Cloudbase Solutions which includes VirtIO drivers pre-installed. If building from a Microsoft ISO, integrate the Fedora VirtIO driver package during the build. Without VirtIO network drivers, Xloud Compute's virtual NIC is invisible to the Windows guest.
+  </Accordion>
+</AccordionGroup>

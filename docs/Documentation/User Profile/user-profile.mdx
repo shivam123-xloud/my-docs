@@ -1,0 +1,123 @@
+---
+title: "User Profile"
+description: "A complete guide to managing your Xloud resources through the dashboard — instances, volumes, networks, security, images, and object storage."
+---
+
+## Overview
+
+The Xloud Dashboard gives project members a self-service interface to provision and manage cloud resources within the quotas and permissions set by administrators. This guide covers every user-facing operation available through the dashboard — from first login through managing running workloads.
+
+<CardGroup cols={4}>
+  <Card title="Instances" icon="server">
+    Launch, manage, snapshot, and connect to virtual machines.
+  </Card>
+  <Card title="Storage" icon="database">
+    Create and manage volumes, snapshots, and object containers.
+  </Card>
+  <Card title="Networking" icon="network-wired">
+    Build networks, routers, ports, and assign floating IPs.
+  </Card>
+  <Card title="Security" icon="shield">
+    Configure key pairs, security groups, and access rules.
+  </Card>
+</CardGroup>
+
+---
+
+## Accessing the Dashboard
+
+<Steps>
+  <Step title="Open the Dashboard">
+    Navigate to the Xloud Dashboard URL provided by your administrator in a supported browser.
+
+    | Browser | Supported |
+    |---|---|
+    | Chrome (current stable) | Yes |
+    | Firefox (current stable) | Yes |
+    | Microsoft Edge (current stable) | Yes |
+    | Safari | Limited — not recommended for admin operations |
+  </Step>
+  <Step title="Log In">
+    Enter your credentials on the login screen:
+
+    | Field | Value |
+    |---|---|
+    | Domain | Your Xloud domain (default: `Default`) |
+    | Username | Your Xloud username |
+    | Password | Your Xloud password |
+  </Step>
+  <Step title="Select Your Project">
+    After login, the project selector appears in the top navigation bar. Select the project you want to work in — all resource views are scoped to the selected project.
+
+    <Tip>
+      Switch projects at any time using the project dropdown at the top of the page. Resource lists update immediately to reflect the selected project.
+    </Tip>
+  </Step>
+</Steps>
+
+### Dashboard Tabs
+
+| Tab | Purpose |
+|---|---|
+| **Project** | Self-service resource management — instances, volumes, networks, images, object storage |
+| **Admin** | Platform-wide administration (admin role required) |
+| **Identity** | User, group, and project management (admin role required) |
+| **Settings** | Personal preferences — language, timezone, password change |
+
+---
+
+## Account Settings
+
+<Steps>
+  <Step title="Open Settings">
+    Click your username in the top-right corner and select **Settings**.
+  </Step>
+  <Step title="Update Preferences">
+    | Setting | Options |
+    |---|---|
+    | Language | English and multiple other languages |
+    | Timezone | Select your local timezone for accurate timestamp display |
+    | Items per page | Number of rows shown in resource lists |
+    | Log lines per instance | Console log line limit |
+  </Step>
+  <Step title="Change Password">
+    Navigate to **Settings → Change Password**.
+
+    | Field | Description |
+    |---|---|
+    | Current Password | Your existing password |
+    | New Password | Must meet platform password policy |
+    | Confirm New Password | Must match new password exactly |
+
+    Click **Change** to apply.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Use Key Pairs — Never Password Auth">
+    Cloud images disable password-based SSH by default. Import your public key into Xloud once and reuse it across all instances. Store private keys securely — a lost private key cannot be recovered.
+  </Accordion>
+  <Accordion title="Restrict Security Group Rules to Minimum Required Access">
+    Open only the ports and IP ranges your application requires. Overly permissive rules (e.g., all ports open to `0.0.0.0/0`) significantly increase the attack surface. Review security group rules regularly and remove unused entries.
+  </Accordion>
+  <Accordion title="Use Volume-Backed Root Disks for Important Instances">
+    Ephemeral disk data is lost if the instance is deleted. Boot from a Cinder volume for instances holding important data — the root disk persists independently of the instance lifecycle and can be snapshotted or backed up.
+  </Accordion>
+  <Accordion title="Name Resources Consistently">
+    Use a consistent naming convention across all resources:
+
+    ```
+    <environment>-<role>-<index>
+    prod-web-01, prod-db-01, staging-worker-03
+    ```
+
+    This simplifies filtering, automation, and cost attribution across large projects.
+  </Accordion>
+  <Accordion title="Monitor Quota Usage Proactively">
+    Check **Project → Compute → Overview** regularly. Requests that would exceed quota fail silently in automation pipelines. Request quota increases from administrators before capacity is exhausted — not after a launch failure.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,252 @@
+---
+title: "Instance Migration"
+description: "Configure and perform live and cold migrations of Xloud Compute instances between hypervisor hosts with zero or minimal downtime."
+---
+
+## Overview
+
+Instance migration enables administrators to move virtual machine instances between physical compute hosts. Xloud Compute supports both live migration — where the instance remains running throughout — and cold migration, which requires a brief shutdown.
+
+<CardGroup cols={3}>
+  <Card title="Live Migration" icon="arrow-right-arrow-left">
+    Move running instances between hosts with no user-visible downtime using shared storage or block-level disk transfer.
+  </Card>
+  <Card title="Cold Migration" icon="power-off">
+    Shut down, relocate, and restart instances. Simpler to configure; suitable for scheduled maintenance windows.
+  </Card>
+  <Card title="Volume-Backed Migration" icon="database">
+    Instances backed by persistent volumes migrate without copying ephemeral disk data, reducing migration time significantly.
+  </Card>
+</CardGroup>
+
+---
+
+## Migration Types
+
+| Type | Instance State | Disk Handling | Use Case |
+|---|---|---|---|
+| **Cold (Non-live)** | Stopped during move | Copied to destination | Planned maintenance, no shared storage |
+| **Live — Shared Storage** | Running | Disk stays on shared storage | NFS/Ceph-backed instances; fastest |
+| **Live — Block Migration** | Running | Disk copied host-to-host | No shared storage available |
+| **Live — Volume-Backed** | Running | No disk copy (volume stays in place) | Cinder-backed instances; minimal overhead |
+
+---
+
+## Prerequisites
+
+<Warning>
+  All compute hosts participating in migration must have identical `instances_path` configured (e.g., `/var/lib/nova/instances`) and consistent hostname resolution across the cluster.
+</Warning>
+
+- `libvirt` version 4.4.0+ and QEMU 2.11.0+ recommended for TLS-secured migration streams
+- Firewall permits TCP ports **49152–49261** between all compute nodes (libvirt migration port range)
+- Nova user UID/GID identical across all compute hosts (required for shared storage scenarios)
+- Passwordless SSH configured for the `nova` user between compute hosts
+
+### Shared Storage (NFS) Requirements
+
+- NFS export of the instances directory accessible by all compute hosts
+- Consistent mount point matching `instances_path` on all nodes
+- Correct ownership (`nova:nova`) and permissions on the instances directory
+
+---
+
+## Configuration
+
+<Tabs>
+  <Tab title="GUI">
+    <Info>
+      Migration is initiated from the Xloud dashboard. Infrastructure-level prerequisites (SSH keys, shared storage, firewall rules) must be configured via CLI or Xdeploy before migrations can be performed through the GUI.
+    </Info>
+
+    <Steps>
+      <Step title="Navigate to Instance List">
+        Go to **Admin → Compute → Instances**.
+      </Step>
+      <Step title="Select the Instance">
+        Locate the instance to migrate. In the **Actions** dropdown, select **Live Migrate** or **Migrate** (cold).
+      </Step>
+      <Step title="Configure Migration Options">
+        For live migration, the dialog presents:
+
+        | Option | Description |
+        |---|---|
+        | Destination Host | Leave blank to let the scheduler choose, or select a specific host |
+        | Block Migration | Enable if no shared storage is configured between hosts |
+        | Disk Overcommit | Allow destination to accept migration even if disk capacity is tight |
+      </Step>
+      <Step title="Confirm and Monitor">
+        Click **Migrate**. Monitor the instance status — it will transition through `MIGRATING` and return to `ACTIVE` on completion.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="CLI">
+
+    ### Step 1 — Configure nova.conf
+
+    On every compute node, set the listen address to accept incoming migration connections:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf"
+    [DEFAULT]
+    instances_path = /var/lib/nova/instances
+
+    [libvirt]
+    live_migration_uri = qemu+ssh://nova@%s/system
+    ```
+    </CodeGroup>
+
+    ---
+
+    ### Step 2 — Tune Migration Downtime (Optional)
+
+    Control the acceptable pause window during live migration memory synchronization:
+
+    <CodeGroup>
+    ```ini title="/etc/nova/nova.conf — downtime tuning"
+    [libvirt]
+    live_migration_downtime = 500
+    live_migration_downtime_steps = 10
+    live_migration_downtime_delay = 75
+    live_migration_completion_timeout = 800
+    ```
+    </CodeGroup>
+
+    | Parameter | Default | Description |
+    |---|---|---|
+    | `live_migration_downtime` | 500 ms | Target maximum pause at final sync |
+    | `live_migration_downtime_steps` | 10 | Number of incremental downtime adjustments |
+    | `live_migration_downtime_delay` | 75 s | Time between each downtime adjustment |
+    | `live_migration_completion_timeout` | 800 s | Per-GB timeout multiplier for total migration time |
+
+    ---
+
+    ### Step 3 — Enable Performance Modes (Optional)
+
+    <Accordion title="Auto-Convergence">
+      Gradually throttles the instance's CPU to allow memory dirty pages to be copied faster, ensuring migration completes without indefinitely extending the window.
+
+      <CodeGroup>
+      ```ini title="/etc/nova/nova.conf"
+      [libvirt]
+      live_migration_permit_auto_converge = true
+      ```
+      </CodeGroup>
+
+      <Tip>Use auto-convergence for memory-intensive workloads where dirty page rates are high.</Tip>
+    </Accordion>
+
+    <Accordion title="Post-Copy Migration">
+      Activates the instance on the destination host before all memory has been transferred. Remaining pages are pulled on demand from the source.
+
+      <CodeGroup>
+      ```ini title="/etc/nova/nova.conf"
+      [libvirt]
+      live_migration_permit_post_copy = true
+      ```
+      </CodeGroup>
+
+      <Warning>
+        If the network connection between source and destination is interrupted during post-copy, the instance cannot be recovered and will be rebooted. Only enable post-copy on stable, high-bandwidth networks.
+      </Warning>
+    </Accordion>
+
+    ---
+
+    ### Step 4 — Perform Migration
+
+    <CodeGroup>
+    ```bash title="Live migrate (scheduler selects host)"
+    openstack server migrate --live-migration <instance-id>
+    ```
+
+    ```bash title="Live migrate to a specific host"
+    openstack server migrate --live-migration --host <target-host> <instance-id>
+    ```
+
+    ```bash title="Block live migration (no shared storage)"
+    openstack server migrate --live-migration --block-migration <instance-id>
+    ```
+
+    ```bash title="Cold migration"
+    openstack server migrate <instance-id>
+    ```
+    </CodeGroup>
+
+    After a cold migration, confirm the new host and resize-confirm to complete:
+
+    <CodeGroup>
+    ```bash title="Confirm cold migration"
+    openstack server resize confirm <instance-id>
+    ```
+    </CodeGroup>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Validation
+
+<Steps>
+  <Step title="Check Migration Status">
+    <CodeGroup>
+    ```bash title="List in-progress migrations"
+    openstack server migration list --server <instance-id>
+    ```
+    </CodeGroup>
+
+    A completed migration shows `status: completed` with source and destination host populated.
+  </Step>
+  <Step title="Confirm Instance Host">
+    <CodeGroup>
+    ```bash title="Verify instance landed on target host"
+    openstack server show <instance-id> -c OS-EXT-SRV-ATTR:hypervisor_hostname -c status
+    ```
+    </CodeGroup>
+
+    `status` must be `ACTIVE` and the hypervisor hostname must reflect the destination host.
+  </Step>
+  <Step title="Verify Instance Connectivity">
+    Confirm the instance responds to ping and SSH after migration to validate network continuity.
+  </Step>
+</Steps>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Shared Storage vs Block Migration">
+    Prefer shared storage (NFS, Ceph) for live migration in production clusters. Block migration copies the entire instance disk over the network, increasing migration time, network load, and risk of timeout for large instances.
+  </Accordion>
+  <Accordion title="Cell Boundary Awareness">
+    Live migration is restricted to hosts within the same Nova cell. Cross-cell migration is not supported. Plan availability zone and cell topology to keep related workloads within the same cell.
+  </Accordion>
+  <Accordion title="TLS-Secured Migration Streams">
+    For environments running libvirt 4.4.0+ and QEMU 2.11.0+, configure QEMU-native TLS to encrypt live migration traffic. This is strongly recommended for any multi-tenant or compliance-sensitive environment and requires an existing PKI infrastructure.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Migration times out">
+    **Cause:** High memory dirty rate prevents convergence within `live_migration_completion_timeout`.
+
+    **Resolution:** Enable `live_migration_permit_auto_converge = true` to throttle instance CPU during migration, or increase `live_migration_completion_timeout` for memory-heavy workloads.
+  </Accordion>
+  <Accordion title="'No valid host found' during migration">
+    **Cause:** The scheduler cannot find a destination meeting the instance's resource requirements.
+
+    **Resolution:** Check available capacity on potential hosts with `openstack hypervisor stats show`. Verify the target host is enabled and in the correct availability zone.
+  </Accordion>
+  <Accordion title="Permission denied on SSH during migration setup">
+    **Cause:** Passwordless SSH is not configured between compute hosts for the `nova` user.
+
+    **Resolution:** Distribute the `nova` user's SSH public key to `authorized_keys` on all compute hosts. Verify with `ssh nova@<target-host>` from the source node.
+  </Accordion>
+</AccordionGroup>
